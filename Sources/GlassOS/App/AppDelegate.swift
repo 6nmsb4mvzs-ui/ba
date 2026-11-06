@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var mainWindow: NSWindow?
     var statusItem: NSStatusItem?
     var wallpaperEngine: WallpaperEngine?
@@ -77,17 +77,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         mainWindow = GlassWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
 
         mainWindow?.titlebarAppearsTransparent = true
         mainWindow?.titleVisibility = .hidden
-        mainWindow?.isMovableByWindowBackground = false
+        mainWindow?.isMovableByWindowBackground = true
         mainWindow?.backgroundColor = .clear
         mainWindow?.hasShadow = true
-        mainWindow?.collectionBehavior = [.fullScreenNone]
+        mainWindow?.delegate = self
         mainWindow?.center()
         mainWindow?.setFrameAutosaveName("GlassOS.Main")
         let hostingView = NSHostingView(rootView: contentView)
@@ -144,6 +144,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func statusBarClicked() {
         showMainWindow()
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        (mainWindow as? GlassWindow)?.updateCornerRadius(fullscreen: true)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        (mainWindow as? GlassWindow)?.updateCornerRadius(fullscreen: false)
     }
 
     @objc func showMainWindow() {

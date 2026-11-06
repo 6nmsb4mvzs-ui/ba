@@ -1,6 +1,8 @@
 import AppKit
 
 class GlassWindow: NSWindow {
+    private var glassContainer: NSView?
+
     override init(
         contentRect: NSRect,
         styleMask style: NSWindow.StyleMask,
@@ -17,20 +19,38 @@ class GlassWindow: NSWindow {
         container.wantsLayer = true
         container.layer?.cornerRadius = 16
         container.layer?.masksToBounds = true
-        container.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
+        container.autoresizingMask = [.width, .height]
+        glassContainer = container
+
+        let darkBg = NSView(frame: container.bounds)
+        darkBg.wantsLayer = true
+        darkBg.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1.0).cgColor
+        darkBg.autoresizingMask = [.width, .height]
+        container.addSubview(darkBg)
 
         let glass = NSVisualEffectView(frame: container.bounds)
-        glass.blendingMode = NSVisualEffectView.BlendingMode.behindWindow
-        glass.state = NSVisualEffectView.State.active
-        glass.material = NSVisualEffectView.Material.fullScreenUI
+        glass.blendingMode = .behindWindow
+        glass.state = .active
+        glass.material = .fullScreenUI
         glass.alphaValue = 0.55
-        glass.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
+        glass.autoresizingMask = [.width, .height]
         container.addSubview(glass)
 
         view.frame = container.bounds
-        view.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
+        view.autoresizingMask = [.width, .height]
         container.addSubview(view)
 
         contentView = container
+    }
+
+    override func toggleFullScreen(_ sender: Any?) {
+        super.toggleFullScreen(sender)
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
+    func updateCornerRadius(fullscreen: Bool) {
+        glassContainer?.layer?.cornerRadius = fullscreen ? 0 : 16
     }
 }

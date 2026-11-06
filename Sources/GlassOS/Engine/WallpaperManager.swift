@@ -103,11 +103,14 @@ class WallpaperManager: ObservableObject {
     @Published var wallpaperDirectory: URL
 
     private let engine = WallpaperEngine()
+    private let downloadCacheDir: URL
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         wallpaperDirectory = appSupport.appendingPathComponent("GlassOS/Wallpapers")
+        downloadCacheDir = appSupport.appendingPathComponent("GlassOS/DownloadCache")
         try? FileManager.default.createDirectory(at: wallpaperDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: downloadCacheDir, withIntermediateDirectories: true)
         loadWallpapers()
     }
 
@@ -214,7 +217,7 @@ class WallpaperManager: ObservableObject {
         switch wallpaper.type {
         case .remote:
             guard let fullURL = wallpaper.fullResURL else { return }
-            let cachedPath = wallpaperDirectory.appendingPathComponent("\(wallpaper.id).jpg")
+            let cachedPath = downloadCacheDir.appendingPathComponent("\(wallpaper.id).jpg")
 
             if FileManager.default.fileExists(atPath: cachedPath.path) {
                 engine.applyStaticWallpaper(url: cachedPath)

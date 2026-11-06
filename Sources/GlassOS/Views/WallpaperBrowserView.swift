@@ -142,6 +142,7 @@ struct WallpaperBrowserView: View {
                 }
             }
             .contentShape(Rectangle())
+            .background(WindowDragBlocker())
             .gesture(
                 DragGesture()
                     .onChanged { value in
@@ -441,4 +442,13 @@ struct NSRectCorner: OptionSet {
     static let bottomLeft = NSRectCorner(rawValue: 1 << 2)
     static let bottomRight = NSRectCorner(rawValue: 1 << 3)
     static let allCorners: NSRectCorner = [.topLeft, .topRight, .bottomLeft, .bottomRight]
+}
+
+class NoDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
+struct WindowDragBlocker: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { NoDragView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
