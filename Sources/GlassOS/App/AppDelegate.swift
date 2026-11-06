@@ -152,46 +152,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.repositionOverlayPanels()
         }
 
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.updateOverlayForFullscreen()
-        }
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.updateOverlayForFullscreen()
-        }
-    }
-
-    private func updateOverlayForFullscreen() {
-        guard desktopOverlayVisible else { return }
-        guard let screen = NSScreen.main else { return }
-        let sf = screen.frame
-        let myPID = ProcessInfo.processInfo.processIdentifier
-
-        let windowList = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-        ) as? [[String: Any]] ?? []
-
-        let hasFullscreen = windowList.contains { info in
-            guard let pid = info[kCGWindowOwnerPID as String] as? pid_t,
-                  pid != myPID,
-                  let layer = info[kCGWindowLayer as String] as? Int,
-                  layer == 0,
-                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
-                  let w = bounds["Width"] as? CGFloat,
-                  let h = bounds["Height"] as? CGFloat else { return false }
-            return w >= sf.width && h >= sf.height
-        }
-
-        if hasFullscreen {
-            allOverlayPanels.forEach { $0?.orderOut(nil) }
-        } else {
-            allOverlayPanels.forEach { $0?.orderFront(nil) }
-        }
     }
 
     private func makeOverlayPanel(frame: NSRect, level: NSWindow.Level) -> NSPanel {
@@ -202,7 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             defer: false
         )
         panel.level = level
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        panel.collectionBehavior = [.stationary, .ignoresCycle]
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
