@@ -38,7 +38,7 @@ class NowPlayingManager: ObservableObject {
     private typealias MRInfoCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
     private typealias MRStateCallback = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
     private typealias MRRegisterNotifs = @convention(c) (DispatchQueue) -> Void
-    private typealias MRSendCommand = @convention(c) (UInt32, CFDictionary?) -> Bool
+    private typealias MRSendCommand = @convention(c) (UInt32, UnsafeRawPointer?) -> Bool
 
     private var _getNowPlayingInfo: MRInfoCallback?
     private var _getIsPlaying: MRStateCallback?
@@ -533,7 +533,7 @@ class NowPlayingManager: ObservableObject {
     // MARK: - Playback Controls
 
     func togglePlayPause() {
-        _ = _sendCommand?(2, nil)
+        if let send = _sendCommand { _ = send(UInt32(2), nil) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.isPlaying.toggle()
             self?.fetchNowPlaying()
@@ -541,26 +541,26 @@ class NowPlayingManager: ObservableObject {
     }
 
     func nextTrack() {
-        _ = _sendCommand?(4, nil)
+        if let send = _sendCommand { _ = send(UInt32(4), nil) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.fetchNowPlaying()
         }
     }
 
     func previousTrack() {
-        _ = _sendCommand?(5, nil)
+        if let send = _sendCommand { _ = send(UInt32(5), nil) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.fetchNowPlaying()
         }
     }
 
     func toggleShuffle() {
-        _ = _sendCommand?(6, nil)
+        if let send = _sendCommand { _ = send(UInt32(6), nil) }
         shuffleOn.toggle()
     }
 
     func toggleRepeat() {
-        _ = _sendCommand?(7, nil)
+        if let send = _sendCommand { _ = send(UInt32(7), nil) }
         repeatMode = (repeatMode + 1) % 3
     }
 
@@ -587,7 +587,7 @@ class NowPlayingManager: ObservableObject {
                     if maxNext > totalTracks then set maxNext to totalTracks
                     repeat with i from (idx + 1) to maxNext
                         set t to track i of pl
-                        set output to output & name of t & "||" & artist of t & "\\n"
+                        set output to output & name of t & "||" & artist of t & return
                     end repeat
                     return output
                 end try

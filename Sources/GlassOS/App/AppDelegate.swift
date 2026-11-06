@@ -212,10 +212,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ]
         for cmd in cmds {
             let task = Process()
-            task.launchPath = "/bin/bash"
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
             task.arguments = ["-c", cmd]
-            try? task.run()
-            task.waitUntilExit()
+            do { try task.run(); task.waitUntilExit() } catch {}
         }
     }
 
@@ -228,10 +227,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ]
         for cmd in cmds {
             let task = Process()
-            task.launchPath = "/bin/bash"
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
             task.arguments = ["-c", cmd]
-            try? task.run()
-            task.waitUntilExit()
+            do { try task.run(); task.waitUntilExit() } catch {}
         }
     }
 
