@@ -103,24 +103,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setupDesktopOverlay() {
         guard let screen = NSScreen.main else { return }
 
-        let window = NSWindow(
+        let panel = OverlayPanel(
             contentRect: screen.frame,
-            styleMask: .borderless,
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
-        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = false
+        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.acceptsMouseMovedEvents = true
+        panel.becomesKeyOnlyIfNeeded = true
 
         let overlayView = DesktopOverlayView()
         let hostingView = ClickThroughHostingView(rootView: overlayView)
-        window.contentView = hostingView
+        panel.contentView = hostingView
 
-        window.orderFront(nil)
-        desktopWindow = window
+        panel.orderFront(nil)
+        desktopWindow = panel
 
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
@@ -253,4 +257,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setGlassContent(NSHostingView(rootView: aboutView))
         window.makeKeyAndOrderFront(nil)
     }
+}
+
+class OverlayPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 }

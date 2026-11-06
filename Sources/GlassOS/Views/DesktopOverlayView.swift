@@ -7,21 +7,26 @@ struct DesktopOverlayView: View {
     @ObservedObject var imageCache = ImageCache.shared
     @ObservedObject var fontManager = FontManager.shared
     @State private var currentTime = Date()
-    @State private var wallpaperScrollOffset: CGFloat = 0
+    @State private var carouselIndex: Int = 0
+    @State private var carouselDragOffset: CGFloat = 0
 
     let clockTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GeometryReader { geo in
-            ZStack(alignment: .top) {
+            ZStack {
                 Color.clear
                     .contentShape(Rectangle())
                     .allowsHitTesting(false)
 
                 // Clock + Date — top center
-                clockSection
-                    .padding(.top, 36)
-                    .frame(maxWidth: .infinity)
+                VStack {
+                    clockSection
+                        .padding(.top, 36)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .allowsHitTesting(false)
 
                 // Left column: Now Playing + Lyrics
                 VStack(alignment: .leading, spacing: 14) {
@@ -32,15 +37,21 @@ struct DesktopOverlayView: View {
                     Spacer(minLength: 0)
                 }
                 .frame(width: 280, alignment: .leading)
-                .position(x: 172, y: geo.size.height * 0.45)
+                .padding(.leading, 32)
+                .padding(.top, 120)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                 // Center: App launcher
                 appLauncherSection
+                    .frame(maxWidth: 500)
                     .position(x: geo.size.width * 0.5, y: geo.size.height * 0.5)
 
-                // Right: Vertical wallpaper strip
-                wallpaperStrip(height: geo.size.height)
-                    .position(x: geo.size.width - 130, y: geo.size.height * 0.5)
+                // Right: Vertical wallpaper carousel
+                verticalWallpaperCarousel(height: geo.size.height)
+                    .frame(width: 220, height: min(geo.size.height - 80, 650))
+                    .padding(.trailing, 24)
+                    .padding(.top, 40)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
         .onReceive(clockTimer) { currentTime = $0 }
@@ -181,12 +192,11 @@ struct DesktopOverlayView: View {
             }
             .padding(18)
         }
-        .frame(maxWidth: 500)
     }
 
-    // MARK: - Wallpaper Vertical Strip
+    // MARK: - Vertical 3D Wallpaper Carousel
 
-    private func wallpaperStrip(height: CGFloat) -> some View {
+    private func verticalWallpaperCarousel(height: CGFloat) -> some View {
         GlassWidgetCard {
             VStack(spacing: 8) {
                 HStack {
@@ -195,59 +205,102 @@ struct DesktopOverlayView: View {
                     Text("Wallpapers")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
+                    Spacer()
                 }
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 8) {
-                        ForEach(wallpaperManager.wallpapers) { wp in
-                            wallpaperCard(wp)
+                GeometryReader { geo in
+                    let cardHeight: CGFloat = 100
+                    let cardWidth: CGFloat = geo.size.width - 20
+                    let spacing: CGFloat = cardHeight * 0.75
+                    let centerY = geo.size.height / 2
+                    let wallpapers = wallpaperManager.wallpapers
+                    let dragIndexOffset = carouselDragOffset / spacing
+
+                    ZStack {
+                        ForEach(Array(wallpapers.enumerated()), id: \.element.id) { index, wp in
+                            let floatIndex = CGFloat(index) - CGFloat(carouselIndex) + dragIndexOffset
+                            let yPos = centerY + (floatIndex * spacing)
+                            let distFromCenter = abs(floatIndex)
+                            let normalizedDist = min(distFromCenter / 3.0, 1.0)
+                            let scale = 1.0 - (normalizedDist * 0.25)
+                            let zIdx = 100.0 - Double(distFromCenter)
+                            let rotation = -min(normalizedDist, 1.0) * 35 * (floatIndex < 0 ? -1 : 1)
+                            let cardOpacity = max(0.3, 1.0 - normalizedDist * 0.6)
+
+                            wallpaperCarouselCard(wp, width: cardWidth, height: cardHeight)
+                                .scaleEffect(scale)
+                                .rotation3DEffect(
+                                    .degrees(rotation),
+                                    axis: (x: 1, y: 0, z: 0),
+                                    perspective: 0.5
+                                )
+                                .opacity(cardOpacity)
+                                .position(x: geo.size.width / 2, y: yPos)
+                                .zIndex(zIdx)
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        carouselIndex = index
+                                        wallpaperManager.applyWallpaper(wp)
+                                    }
+                                }
                         }
                     }
-                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                carouselDragOffset = value.translation.height
+                            }
+                            .onEnded { value in
+                                let cardsMoved = Int(round(-value.translation.height / spacing))
+                                let predicted = Int(round(-value.predictedEndTranslation.height / spacing))
+                                let move = abs(predicted) > abs(cardsMoved) ? predicted : cardsMoved
+                                let newIndex = max(0, min(wallpapers.count - 1, carouselIndex + move))
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    carouselIndex = newIndex
+                                    carouselDragOffset = 0
+                                }
+                            }
+                    )
                 }
             }
-            .padding(10)
         }
-        .frame(width: 200, height: min(height - 120, 600))
     }
 
-    private func wallpaperCard(_ wp: WallpaperItem) -> some View {
-        Button(action: {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                wallpaperManager.applyWallpaper(wp)
+    private func wallpaperCarouselCard(_ wp: WallpaperItem, width: CGFloat, height: CGFloat) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            if let img = imageCache.image(for: wp) {
+                Image(nsImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+                    .clipped()
+            } else {
+                LinearGradient(colors: wp.previewColors, startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .frame(width: width, height: height)
             }
-        }) {
-            ZStack(alignment: .bottomLeading) {
-                if let img = imageCache.image(for: wp) {
-                    Image(nsImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 178, height: 100)
-                        .clipped()
-                } else {
-                    LinearGradient(colors: wp.previewColors, startPoint: .topLeading, endPoint: .bottomTrailing)
-                        .frame(width: 178, height: 100)
-                }
 
-                LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 40)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
+            LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 36)
+                .frame(maxHeight: .infinity, alignment: .bottom)
 
-                Text(wp.name)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 6)
+            Text(wp.name)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
 
-                if wallpaperManager.currentWallpaper?.id == wp.id {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.cyan, lineWidth: 2)
-                }
+            if wallpaperManager.currentWallpaper?.id == wp.id {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.cyan, lineWidth: 2)
             }
-            .cornerRadius(8)
         }
-        .buttonStyle(.plain)
+        .frame(width: width, height: height)
+        .cornerRadius(8)
+        .shadow(color: wallpaperManager.currentWallpaper?.id == wp.id ? .cyan.opacity(0.3) : .black.opacity(0.2), radius: 8)
     }
 }
 
