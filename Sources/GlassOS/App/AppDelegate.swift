@@ -77,7 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         mainWindow = GlassWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -87,7 +87,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow?.isMovableByWindowBackground = false
         mainWindow?.backgroundColor = .clear
         mainWindow?.hasShadow = true
-        mainWindow?.collectionBehavior = [.fullScreenPrimary]
+        mainWindow?.collectionBehavior = [.fullScreenNone]
         mainWindow?.center()
         mainWindow?.setFrameAutosaveName("GlassOS.Main")
         let hostingView = NSHostingView(rootView: contentView)

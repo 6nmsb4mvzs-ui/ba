@@ -96,7 +96,7 @@ struct MainContentView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
         }
-        .background(.ultraThinMaterial.opacity(0.04))
+        .background(.ultraThinMaterial.opacity(0.2))
     }
 
     private var mainContentArea: some View {
