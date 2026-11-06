@@ -13,20 +13,24 @@ class GlassWindow: NSWindow {
     }
 
     func setGlassContent(_ view: NSView) {
-        let visualEffect = NSVisualEffectView(frame: contentRect(forFrameRect: frame))
-        visualEffect.blendingMode = NSVisualEffectView.BlendingMode.behindWindow
-        visualEffect.state = NSVisualEffectView.State.active
-        visualEffect.material = NSVisualEffectView.Material.fullScreenUI
-        visualEffect.alphaValue = 0.82
-        visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = 16
-        visualEffect.layer?.masksToBounds = true
-        visualEffect.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
+        let container = NSView(frame: contentRect(forFrameRect: frame))
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 16
+        container.layer?.masksToBounds = true
+        container.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
 
-        view.frame = visualEffect.bounds
+        let glass = NSVisualEffectView(frame: container.bounds)
+        glass.blendingMode = NSVisualEffectView.BlendingMode.behindWindow
+        glass.state = NSVisualEffectView.State.active
+        glass.material = NSVisualEffectView.Material.fullScreenUI
+        glass.alphaValue = 0.06
+        glass.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
+        container.addSubview(glass)
+
+        view.frame = container.bounds
         view.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
-        visualEffect.addSubview(view)
+        container.addSubview(view)
 
-        contentView = visualEffect
+        contentView = container
     }
 }

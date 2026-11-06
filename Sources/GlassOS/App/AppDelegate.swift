@@ -84,7 +84,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         mainWindow?.titlebarAppearsTransparent = true
         mainWindow?.titleVisibility = .hidden
-        mainWindow?.isMovableByWindowBackground = true
+        mainWindow?.isMovableByWindowBackground = false
         mainWindow?.backgroundColor = .clear
         mainWindow?.hasShadow = true
         mainWindow?.collectionBehavior = [.fullScreenPrimary]
