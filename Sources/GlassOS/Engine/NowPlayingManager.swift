@@ -329,8 +329,8 @@ class NowPlayingManager: ObservableObject {
         var error: NSDictionary?
         guard let result = script?.executeAndReturnError(&error) else { return }
 
-        if let imgData = result.data, !imgData.isEmpty,
-           let img = NSImage(data: imgData) {
+        let imgData = result.data
+        if !imgData.isEmpty, let img = NSImage(data: imgData) {
             DispatchQueue.main.async { [weak self] in
                 self?.artwork = img
             }
@@ -339,8 +339,9 @@ class NowPlayingManager: ObservableObject {
 
         let desc = result
         for i in 1...desc.numberOfItems {
-            guard let sub = desc.atIndex(i), let d = sub.data, !d.isEmpty,
-                  let img = NSImage(data: d) else { continue }
+            guard let sub = desc.atIndex(i) else { continue }
+            let d = sub.data
+            guard !d.isEmpty, let img = NSImage(data: d) else { continue }
             DispatchQueue.main.async { [weak self] in
                 self?.artwork = img
             }
