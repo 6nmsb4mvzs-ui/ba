@@ -2,11 +2,11 @@ import SwiftUI
 
 struct GlassBackground: View {
     var cornerRadius: CGFloat = 12
-    var opacity: Double = 0.15
+    var opacity: Double = 0.08
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(.ultraThinMaterial.opacity(0.8))
+            .fill(.ultraThinMaterial.opacity(0.35))
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color.white.opacity(opacity))
@@ -16,13 +16,13 @@ struct GlassBackground: View {
                     .stroke(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.3),
-                                Color.white.opacity(0.05)
+                                Color.white.opacity(0.2),
+                                Color.white.opacity(0.03)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1
+                        lineWidth: 0.5
                     )
             )
     }
@@ -70,10 +70,10 @@ struct GlassButton: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(color.opacity(0.3))
+                    .fill(color.opacity(0.18))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(color.opacity(0.5), lineWidth: 1)
+                            .stroke(color.opacity(0.35), lineWidth: 0.5)
                     )
             )
         }

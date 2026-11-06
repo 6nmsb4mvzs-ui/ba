@@ -16,7 +16,8 @@ class GlassWindow: NSWindow {
         let visualEffect = NSVisualEffectView(frame: contentRect(forFrameRect: frame))
         visualEffect.blendingMode = NSVisualEffectView.BlendingMode.behindWindow
         visualEffect.state = NSVisualEffectView.State.active
-        visualEffect.material = NSVisualEffectView.Material.hudWindow
+        visualEffect.material = NSVisualEffectView.Material.fullScreenUI
+        visualEffect.alphaValue = 0.82
         visualEffect.wantsLayer = true
         visualEffect.layer?.cornerRadius = 16
         visualEffect.layer?.masksToBounds = true

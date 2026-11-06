@@ -390,7 +390,7 @@ struct WallpaperGridCard: View {
                 Spacer()
             }
             .padding(10)
-            .background(.ultraThinMaterial.opacity(0.8))
+            .background(.ultraThinMaterial.opacity(0.4))
             .clipShape(RoundedCorner(radius: 12, corners: [.bottomLeft, .bottomRight]))
         }
         .shadow(color: isSelected ? .cyan.opacity(0.3) : .clear, radius: 10)

@@ -87,6 +87,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow?.isMovableByWindowBackground = true
         mainWindow?.backgroundColor = .clear
         mainWindow?.hasShadow = true
+        mainWindow?.collectionBehavior = [.fullScreenPrimary]
         mainWindow?.center()
         mainWindow?.setFrameAutosaveName("GlassOS.Main")
         let hostingView = NSHostingView(rootView: contentView)

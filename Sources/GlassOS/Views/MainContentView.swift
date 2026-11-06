@@ -96,7 +96,7 @@ struct MainContentView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
         }
-        .background(.ultraThinMaterial.opacity(0.3))
+        .background(.ultraThinMaterial.opacity(0.12))
     }
 
     private var mainContentArea: some View {
@@ -151,7 +151,7 @@ struct SidebarButton: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
+                    .fill(isSelected ? Color.white.opacity(0.06) : Color.clear)
             )
         }
         .buttonStyle(.plain)
