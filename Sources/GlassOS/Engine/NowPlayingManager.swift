@@ -244,8 +244,6 @@ class NowPlayingManager: ObservableObject {
                     self.repeatMode = rep
                 }
 
-                self.isPlaying = true
-
                 if titleChanged {
                     self.fetchLyrics()
                     self.fetchNextUp()
@@ -314,39 +312,43 @@ class NowPlayingManager: ObservableObject {
     }
 
     private func fetchMusicArtwork() {
+        let tmpPath = "/tmp/glassos_artwork.dat"
         let script = NSAppleScript(source: """
         tell application "Music"
             try
                 if player state is playing or player state is paused then
                     set theTrack to current track
                     if (count of artworks of theTrack) > 0 then
-                        return raw data of artwork 1 of theTrack
+                        set artData to raw data of artwork 1 of theTrack
+                        set tmpFile to POSIX file "\(tmpPath)"
+                        try
+                            set fRef to open for access tmpFile with write permission
+                            set eof of fRef to 0
+                            write artData to fRef
+                            close access fRef
+                        on error
+                            try
+                                close access tmpFile
+                            end try
+                        end try
+                        return "\(tmpPath)"
                     end if
                 end if
             end try
         end tell
+        return ""
         """)
         var error: NSDictionary?
         guard let result = script?.executeAndReturnError(&error) else { return }
+        let path = result.stringValue ?? ""
+        guard !path.isEmpty else { return }
 
-        let imgData = result.data
-        if !imgData.isEmpty, let img = NSImage(data: imgData) {
-            DispatchQueue.main.async { [weak self] in
-                self?.artwork = img
-            }
-            return
-        }
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              !data.isEmpty,
+              let img = NSImage(data: data) else { return }
 
-        let desc = result
-        guard desc.numberOfItems > 0 else { return }
-        for i in 1...desc.numberOfItems {
-            guard let sub = desc.atIndex(i) else { continue }
-            let d = sub.data
-            guard !d.isEmpty, let img = NSImage(data: d) else { continue }
-            DispatchQueue.main.async { [weak self] in
-                self?.artwork = img
-            }
-            return
+        DispatchQueue.main.async { [weak self] in
+            self?.artwork = img
         }
     }
 
@@ -392,7 +394,9 @@ class NowPlayingManager: ObservableObject {
                             set trackAlbum to album of current track
                             set playState to "1"
                             if player state is paused then set playState to "0"
-                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
+                            set pos to player position
+                            set dur to duration of current track
+                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & pos & "||" & dur
                         end if
                     end try
                 end tell
@@ -423,7 +427,9 @@ class NowPlayingManager: ObservableObject {
                         set trackAlbum to album of current track
                         set playState to "1"
                         if player state is paused then set playState to "0"
-                        return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
+                        set pos to player position
+                        set dur to (duration of current track) / 1000
+                        return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & pos & "||" & dur
                     end if
                 end try
             end tell
@@ -449,6 +455,14 @@ class NowPlayingManager: ObservableObject {
             self.artist = parts.count > 1 ? parts[1] : ""
             self.album = parts.count > 2 ? parts[2] : ""
             self.isPlaying = parts.count > 3 ? parts[3] == "1" : false
+            if parts.count > 4, let pos = Double(parts[4].trimmingCharacters(in: .whitespaces)) {
+                self.elapsedTimeBase = pos
+                self.elapsedTimestamp = Date()
+                self.elapsedTime = pos
+            }
+            if parts.count > 5, let dur = Double(parts[5].trimmingCharacters(in: .whitespaces)) {
+                self.duration = dur
+            }
             if titleChanged && !newTitle.isEmpty {
                 self.fetchLyrics()
             }
