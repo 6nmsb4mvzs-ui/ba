@@ -64,15 +64,7 @@ struct WallpaperItem: Identifiable, Codable {
     var thumbnailURL: URL? {
         guard let urlStr = remoteURL else { return nil }
         if urlStr.contains("unsplash.com") {
-            return URL(string: urlStr + "&w=800&q=80")
-        }
-        if urlStr.contains("w.wallhaven.cc/full") {
-            let thumb = urlStr
-                .replacingOccurrences(of: "https://w.wallhaven.cc/full", with: "https://th.wallhaven.cc/orig")
-                .replacingOccurrences(of: "wallhaven-", with: "")
-            if let dotRange = thumb.range(of: ".", options: .backwards) {
-                return URL(string: String(thumb[thumb.startIndex..<dotRange.lowerBound]) + ".jpg")
-            }
+            return URL(string: urlStr + "&w=1200&q=85")
         }
         return URL(string: urlStr)
     }
