@@ -115,6 +115,11 @@ cp VERSION "$APP_BUNDLE/Contents/Resources/VERSION"
 
 echo "  ✓ App bundle created: $APP_BUNDLE"
 
+# Remove quarantine and ad-hoc sign
+xattr -cr "$APP_BUNDLE" 2>/dev/null || true
+codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
+echo "  ✓ App signed and quarantine cleared"
+
 # If updating, replace the running app
 if [ "$UPDATE_MODE" = true ]; then
     RUNNING_APP=$(osascript -e 'tell application "System Events" to get POSIX path of (file of process "GlassOS")' 2>/dev/null || echo "")
@@ -122,6 +127,8 @@ if [ "$UPDATE_MODE" = true ]; then
         echo "→ Replacing running app at: $RUNNING_APP"
         rm -rf "$RUNNING_APP"
         cp -R "$APP_BUNDLE" "$RUNNING_APP"
+        xattr -cr "$RUNNING_APP" 2>/dev/null || true
+        codesign --force --deep --sign - "$RUNNING_APP" 2>/dev/null || true
         echo "  ✓ Update installed. Restart GlassOS to apply."
     fi
     exit 0
