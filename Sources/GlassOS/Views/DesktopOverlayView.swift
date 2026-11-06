@@ -262,14 +262,10 @@ struct WallpaperCarouselOverlayView: View {
                 .padding(.horizontal, 8)
                 .padding(.bottom, 6)
 
-            if wallpaperManager.currentWallpaper?.id == wp.id {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.cyan, lineWidth: 2)
-            }
         }
         .frame(width: width, height: height)
         .cornerRadius(8)
-        .shadow(color: wallpaperManager.currentWallpaper?.id == wp.id ? .cyan.opacity(0.3) : .black.opacity(0.2), radius: 8)
+        .shadow(color: wallpaperManager.currentWallpaper?.id == wp.id ? .cyan.opacity(0.4) : .black.opacity(0.15), radius: wallpaperManager.currentWallpaper?.id == wp.id ? 12 : 6)
     }
 }
 
@@ -296,12 +292,8 @@ struct GlassWidgetCard<Content: View>: View {
     var body: some View {
         content
             .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.black.opacity(0.3))
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(.ultraThinMaterial.opacity(0.35))
-                }
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.black.opacity(0.35))
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
     }

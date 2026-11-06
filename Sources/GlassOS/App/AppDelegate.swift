@@ -14,6 +14,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var appLauncherPanel: NSPanel?
     var wallpaperPanel: NSPanel?
 
+    private var overlapTimer: Timer?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
         setupDesktopOverlay()
@@ -104,13 +106,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainWindow?.makeKeyAndOrderFront(nil)
     }
 
-    // MARK: - Desktop Overlay (separate panels per widget)
+    // MARK: - Desktop Overlay (separate floating panels per widget)
 
     private func setupDesktopOverlay() {
         guard let screen = NSScreen.main else { return }
         let sf = screen.frame
 
-        let widgetLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.normalWindow)) - 1)
+        // Floating level so nonactivatingPanel receives mouse events
+        let widgetLevel = NSWindow.Level.floating
 
         // Clock — top center, non-interactive
         clockPanel = makeOverlayPanel(
@@ -150,6 +153,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                                                object: nil, queue: .main) { [weak self] _ in
             self?.repositionOverlayPanels()
         }
+
+        startOverlapDetection()
     }
 
     private func makeOverlayPanel(frame: NSRect, level: NSWindow.Level) -> NSPanel {
@@ -170,6 +175,79 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return panel
     }
 
+    // MARK: - Per-Widget Overlap Detection
+
+    private func startOverlapDetection() {
+        overlapTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.updateWidgetVisibility()
+        }
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self?.updateWidgetVisibility()
+            }
+        }
+    }
+
+    private func updateWidgetVisibility() {
+        guard desktopOverlayVisible else { return }
+        guard let screen = NSScreen.main else { return }
+
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        let screenHeight = screen.frame.height
+
+        // Get all on-screen windows from other apps at normal level or above
+        let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] ?? []
+
+        let appWindowRects: [CGRect] = windowList.compactMap { info in
+            guard let pid = info[kCGWindowOwnerPID as String] as? Int32,
+                  pid != myPID,
+                  let layer = info[kCGWindowLayer as String] as? Int,
+                  layer >= 0 && layer < 3, // normal windows only, not floating/menu
+                  let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+                  let x = bounds["X"], let y = bounds["Y"],
+                  let w = bounds["Width"], let h = bounds["Height"],
+                  w > 50, h > 50 // ignore tiny windows (tooltips, etc.)
+            else { return nil }
+            // CG coords (top-left origin) — keep as-is for comparison
+            return CGRect(x: x, y: y, width: w, height: h)
+        }
+
+        for panel in [clockPanel, nowPlayingPanel, appLauncherPanel, wallpaperPanel] {
+            guard let panel = panel else { continue }
+            let nsFrame = panel.frame
+            // Convert NS coords (bottom-left) to CG coords (top-left)
+            let cgFrame = CGRect(
+                x: nsFrame.origin.x,
+                y: screenHeight - nsFrame.origin.y - nsFrame.height,
+                width: nsFrame.width,
+                height: nsFrame.height
+            )
+
+            let isOverlapped = appWindowRects.contains { windowRect in
+                let intersection = cgFrame.intersection(windowRect)
+                guard !intersection.isNull else { return false }
+                let overlapArea = intersection.width * intersection.height
+                let panelArea = cgFrame.width * cgFrame.height
+                return panelArea > 0 && (overlapArea / panelArea) > 0.25
+            }
+
+            let targetAlpha: CGFloat = isOverlapped ? 0.0 : 1.0
+            if abs(panel.alphaValue - targetAlpha) > 0.01 {
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.2
+                    panel.animator().alphaValue = targetAlpha
+                }
+            }
+        }
+    }
+
     private func repositionOverlayPanels() {
         guard let screen = NSScreen.main else { return }
         let sf = screen.frame
@@ -186,9 +264,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func toggleDesktopOverlay() {
         if desktopOverlayVisible {
+            overlapTimer?.invalidate()
+            overlapTimer = nil
             allOverlayPanels.forEach { $0?.orderOut(nil) }
         } else {
-            allOverlayPanels.forEach { $0?.orderFront(nil) }
+            allOverlayPanels.forEach {
+                $0?.alphaValue = 1.0
+                $0?.orderFront(nil)
+            }
+            startOverlapDetection()
         }
         desktopOverlayVisible.toggle()
     }
