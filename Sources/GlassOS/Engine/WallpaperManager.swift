@@ -78,12 +78,12 @@ struct WallpaperItem: Identifiable, Codable {
     }
 }
 
-private func wh(_ whID: String, _ name: String, _ ext: String, _ cat: String) -> WallpaperItem {
+private func wh(_ whID: String, _ name: String, _ ext: String, _ colors: [String]) -> WallpaperItem {
     let prefix = String(whID.prefix(2))
     return WallpaperItem(
         id: "wh-\(whID)", name: name, type: .remote, path: nil,
         remoteURL: "https://w.wallhaven.cc/full/\(prefix)/wallhaven-\(whID).\(ext)",
-        gradientColors: nil, category: cat
+        gradientColors: colors, category: nil
     )
 }
 
@@ -118,75 +118,34 @@ class WallpaperManager: ObservableObject {
     func loadWallpapers() {
         var items: [WallpaperItem] = []
 
-        // ═══════════════════════════════════════════
-        //  CITY — cyberpunk, neon, futuristic, Tokyo
-        // ═══════════════════════════════════════════
+        // Sorted dark → green → blue → purple → red → warm → pastel
 
-        items.append(wh("5gpv25", "Rain City", "jpg", "city"))
-        items.append(wh("pkr6mp", "Neon District", "png", "city"))
-        items.append(wh("z8lgwg", "Cyber Tokyo", "jpg", "city"))
-        items.append(wh("7jgyre", "Tokyo Nights", "jpg", "city"))
-        items.append(wh("jxjm1m", "Synthwave", "png", "city"))
-        items.append(wh("wy6vqx", "Akihabara", "jpg", "city"))
-        items.append(wh("y8wm8g", "Shibuya Glow", "png", "city"))
-        items.append(wh("vqv3p8", "Harajuku", "jpg", "city"))
-        items.append(wh("5wezr9", "Metropolis", "png", "city"))
-        items.append(wh("oxwj1l", "Neon Rain", "jpg", "city"))
-        items.append(wh("exl88k", "Midnight Tokyo", "png", "city"))
-        items.append(wh("w58q8x", "Ginza", "jpg", "city"))
-        items.append(wh("6d1v5q", "Electric Avenue", "jpg", "city"))
-        items.append(wh("pkrly9", "Blade Runner", "jpg", "city"))
-        items.append(wh("d8w6gj", "Infinite Skyline", "jpg", "city"))
-        items.append(wh("83rrm2", "Chrome City", "jpg", "city"))
-        items.append(wh("725gj3", "Digital Downtown", "jpg", "city"))
-        items.append(wh("ogj2v7", "Shinjuku", "jpg", "city"))
-        items.append(wh("zm5pmj", "Midnight Circuit", "jpg", "city"))
-        items.append(wh("lmdvlr", "Neon Haze", "jpg", "city"))
-        items.append(wh("3llmey", "Phosphor", "jpg", "city"))
-        items.append(wh("6l2rk7", "Monsoon Streets", "jpg", "city"))
-        items.append(wh("vpeek5", "Crimson Gate", "png", "city"))
-        items.append(wh("zykjko", "Ghost Protocol", "jpg", "city"))
-        items.append(wh("83dpz2", "Voltage", "jpg", "city"))
-        items.append(wh("gp3593", "Afterglow", "jpg", "city"))
-        items.append(wh("96pzpw", "Downpour", "jpg", "city"))
-
-        // ═══════════════════════════════════════════
-        //  LANDSCAPE — dark forests, fantasy, stars,
-        //  snow, aurora, cherry blossom
-        // ═══════════════════════════════════════════
-
-        items.append(wh("9mjoy1", "Sakura", "png", "landscape"))
-        items.append(wh("m9md18", "Phantom Forest", "jpg", "landscape"))
-        items.append(wh("72yzje", "Ethereal Realm", "jpg", "landscape"))
-        items.append(wh("6k1dj7", "Shadow Valley", "jpg", "landscape"))
-        items.append(wh("011zk3", "Emerald Mist", "jpg", "landscape"))
-        items.append(wh("p8gp83", "Celestial Path", "jpg", "landscape"))
-        items.append(wh("ey7prw", "Stargazer", "jpg", "landscape"))
-        items.append(wh("eyw5qw", "Forgotten Lands", "jpg", "landscape"))
-        items.append(wh("zm6qmw", "Cosmic Meadow", "jpg", "landscape"))
-        items.append(wh("vqy2jp", "Ancient Kingdom", "jpg", "landscape"))
-        items.append(wh("eolmrl", "Whispering Pines", "jpg", "landscape"))
-        items.append(wh("yxdvjx", "Dark Horizon", "png", "landscape"))
-        items.append(wh("kwd36d", "Twilight Expanse", "jpg", "landscape"))
-        items.append(wh("zyvrxy", "Eternal Night", "png", "landscape"))
-        items.append(wh("ox6zrl", "Misty Peaks", "jpg", "landscape"))
-        items.append(wh("9mq26d", "Enchanted Grove", "jpg", "landscape"))
-        items.append(wh("x8893d", "Silent Woods", "png", "landscape"))
-        items.append(wh("vgexwm", "Aurora Dreams", "jpg", "landscape"))
-        items.append(wh("47ol30", "Moss Cathedral", "jpg", "landscape"))
-        items.append(wh("v9z1dl", "Crimson Dusk", "jpg", "landscape"))
-        items.append(wh("96mlzd", "Frozen Kingdom", "jpg", "landscape"))
-        items.append(wh("dgv8qo", "Verdant Shadows", "png", "landscape"))
-        items.append(wh("mdrlj1", "Winter Silence", "jpg", "landscape"))
-        items.append(wh("qzm89d", "Emerald Depths", "png", "landscape"))
-        items.append(wh("2kp55x", "Northern Lights", "jpg", "landscape"))
-        items.append(wh("exrvgk", "Frost Whisper", "jpg", "landscape"))
-        items.append(wh("ne82mk", "Ronin's Path", "jpg", "landscape"))
-        items.append(wh("6dz386", "Midnight Canvas", "jpg", "landscape"))
-        items.append(wh("vp96kl", "Moonlit Sea", "jpg", "landscape"))
-        items.append(wh("6qzl1l", "Ember Crown", "jpg", "landscape"))
-        items.append(wh("d5gxgj", "Dark Citadel", "jpg", "landscape"))
-        items.append(wh("gpgk57", "Wanderer", "jpg", "landscape"))
+        items.append(wh("5yp939", "Kernel Panic",     "png", ["#000000", "#424153"]))
+        items.append(wh("xekg7z", "Black Swordsman",  "png", ["#0a0a0a", "#3a0808"]))
+        items.append(wh("og7vpm", "Digital Seraph",    "png", ["#050505", "#0a3a0a"]))
+        items.append(wh("m9md18", "Phantom Forest",    "jpg", ["#0a1a0a", "#1a3a1a"]))
+        items.append(wh("6k1dj7", "Shadow Valley",     "jpg", ["#0f1a17", "#1a3a2a"]))
+        items.append(wh("011zk3", "Emerald Mist",      "jpg", ["#0a2a1a", "#1a5a2a"]))
+        items.append(wh("47ol30", "Moss Cathedral",     "jpg", ["#1a3a0a", "#2a5a1a"]))
+        items.append(wh("1qlpkv", "Hidden Falls",      "jpg", ["#1a2a2a", "#3a5a5a"]))
+        items.append(wh("zp2y8j", "Frost City",        "jpg", ["#1a2a3a", "#3a6a7a"]))
+        items.append(wh("6dz386", "Midnight Canvas",   "jpg", ["#08081a", "#1a1a3e"]))
+        items.append(wh("vp96kl", "Moonlit Sea",       "jpg", ["#0a0a2a", "#1a3a5a"]))
+        items.append(wh("yxdvjx", "Dark Horizon",      "png", ["#1a1a1a", "#3a3a5a"]))
+        items.append(wh("k8jvm7", "Neural Grid",       "jpg", ["#1a1a2a", "#4a4a6a"]))
+        items.append(wh("ey7prw", "Stargazer",         "jpg", ["#0a0a1e", "#1a2a5e"]))
+        items.append(wh("p8gp83", "Celestial Path",    "jpg", ["#1a0a2e", "#3a2a6e"]))
+        items.append(wh("yqwx17", "Vice City",         "jpg", ["#1a0a2a", "#5a1a6a"]))
+        items.append(wh("jxjm1m", "Synthwave",         "png", ["#1a0033", "#e91e63"]))
+        items.append(wh("yqkrv7", "Crimson Knight",    "png", ["#1a0505", "#5a1a1a"]))
+        items.append(wh("7jmpz3", "Red Moon",          "jpg", ["#2a1a1a", "#5a3030"]))
+        items.append(wh("jerxxw", "Cloud Atlas",       "jpg", ["#2a2a1a", "#5a4a3a"]))
+        items.append(wh("gpgk57", "Wanderer",          "jpg", ["#1a1a10", "#3a3a2a"]))
+        items.append(wh("eyw5qw", "Forgotten Lands",   "jpg", ["#1a1a10", "#4a3a2a"]))
+        items.append(wh("po5o9m", "Dusk Garden",       "jpg", ["#2a1a1a", "#5a3a2a"]))
+        items.append(wh("gp3593", "Afterglow",         "jpg", ["#2a1a0a", "#6a3a1a"]))
+        items.append(wh("mloml9", "Sky Armada",        "jpg", ["#3a3a3a", "#6a5a4a"]))
+        items.append(wh("yqw88g", "Pastel Peaks",      "jpg", ["#3a3a4a", "#8a6a7a"]))
 
         // Scan for user-added local wallpapers in Custom subfolder
         let customDir = wallpaperDirectory.appendingPathComponent("Custom")
@@ -211,7 +170,7 @@ class WallpaperManager: ObservableObject {
             }
         }
 
-        wallpapers = items.sorted { $0.sortHue < $1.sortHue }
+        wallpapers = items
     }
 
     func applyWallpaper(_ wallpaper: WallpaperItem) {

@@ -200,6 +200,7 @@ struct WallpaperCarouselOverlayView: View {
     @ObservedObject var imageCache = ImageCache.shared
     @State private var carouselIndex: Int = 0
     @State private var carouselDragOffset: CGFloat = 0
+    @State private var scrollAccumulator: CGFloat = 0
 
     var body: some View {
         GlassWidgetCard {
@@ -257,6 +258,20 @@ struct WallpaperCarouselOverlayView: View {
                                     carouselDragOffset = 0
                                 }
                             }
+                    )
+                    .overlay(
+                        ScrollWheelView { delta in
+                            scrollAccumulator += delta
+                            let threshold: CGFloat = 30
+                            if abs(scrollAccumulator) >= threshold {
+                                let steps = Int(scrollAccumulator / threshold)
+                                let newIndex = max(0, min(wallpapers.count - 1, carouselIndex - steps))
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    carouselIndex = newIndex
+                                }
+                                scrollAccumulator = 0
+                            }
+                        }
                     )
                 }
             }
@@ -317,6 +332,31 @@ struct GlassWidgetCard<Content: View>: View {
 
     var body: some View {
         content
+    }
+}
+
+// MARK: - Scroll Wheel Handler
+
+struct ScrollWheelView: NSViewRepresentable {
+    var onScroll: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> ScrollWheelNSView {
+        let view = ScrollWheelNSView()
+        view.onScroll = onScroll
+        return view
+    }
+
+    func updateNSView(_ nsView: ScrollWheelNSView, context: Context) {
+        nsView.onScroll = onScroll
+    }
+}
+
+class ScrollWheelNSView: NSView {
+    var onScroll: ((CGFloat) -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 10
+        onScroll?(delta)
     }
 }
 
