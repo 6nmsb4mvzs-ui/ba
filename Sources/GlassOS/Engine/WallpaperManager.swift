@@ -32,6 +32,8 @@ struct WallpaperItem: Identifiable, Codable {
             return [Color(hex: "#2193b0"), Color(hex: "#6dd5ed")]
         case "forest", "nature":
             return [Color(hex: "#0f2027"), Color(hex: "#2c5364")]
+        case "abstract":
+            return [Color(hex: "#ee9ca7"), Color(hex: "#ffdde1")]
         default:
             let hash = abs(name.hashValue)
             let hue = Double(hash % 360) / 360.0
@@ -53,6 +55,14 @@ struct WallpaperItem: Identifiable, Codable {
     }
 }
 
+private func wp(_ id: String, _ name: String, _ photoID: String, _ cat: String) -> WallpaperItem {
+    WallpaperItem(
+        id: id, name: name, type: .remote, path: nil,
+        remoteURL: "https://images.unsplash.com/\(photoID)?auto=format&fit=crop",
+        gradientColors: nil, category: cat
+    )
+}
+
 class WallpaperManager: ObservableObject {
     static let shared = WallpaperManager()
 
@@ -72,108 +82,80 @@ class WallpaperManager: ObservableObject {
     func loadWallpapers() {
         var items: [WallpaperItem] = []
 
-        let base = "https://images.unsplash.com/"
+        // --- Mountains & Landscapes ---
+        items.append(wp("mountain-lake", "Mountain Lake", "photo-1506905925346-21bda4d32df4", "mountain"))
+        items.append(wp("snowy-peaks", "Snowy Peaks", "photo-1519681393784-d120267933ba", "mountain"))
+        items.append(wp("green-valley", "Green Valley", "photo-1470071459604-3b5ec3a7fe05", "landscape"))
+        items.append(wp("purple-sunset", "Purple Sunset", "photo-1536431311719-398b6704d4cc", "landscape"))
+        items.append(wp("desert-dunes", "Desert Dunes", "photo-1509316975850-ff9c5deb0cd9", "landscape"))
+        items.append(wp("autumn-road", "Autumn Road", "photo-1508193638397-1c4234db14d8", "nature"))
+        items.append(wp("dramatic-peak", "Dramatic Peak", "photo-1464822759023-fed622ff2c3b", "mountain"))
+        items.append(wp("lake-reflection", "Lake Reflection", "photo-1501785888041-af3ef285b470", "landscape"))
+        items.append(wp("waterfall", "Waterfall", "photo-1433086966358-54859d0ed716", "nature"))
+        items.append(wp("sunset-field", "Sunset Field", "photo-1500534314263-a834e5fe8f3c", "landscape"))
+        items.append(wp("aerial-trees", "Aerial Forest", "photo-1497436072909-60f360e1d4b1", "nature"))
+        items.append(wp("flower-field", "Flower Field", "photo-1465146344425-f00d5f5c8f07", "nature"))
+        items.append(wp("sunset-silhouette", "Sunset Silhouette", "photo-1490730141103-6cac27aaab94", "landscape"))
+        items.append(wp("dramatic-clouds", "Dramatic Clouds", "photo-1504608524841-42fe6f032b4b", "landscape"))
+        items.append(wp("golden-hour", "Golden Hour", "photo-1472214103451-9374bd1c798e", "landscape"))
 
-        items.append(contentsOf: [
-            WallpaperItem(
-                id: "unsplash-mountain-lake", name: "Mountain Lake", type: .remote,
-                path: nil, remoteURL: base + "photo-1506905925346-21bda4d32df4?auto=format&fit=crop",
-                gradientColors: nil, category: "landscape"
-            ),
-            WallpaperItem(
-                id: "unsplash-snowy-peaks", name: "Snowy Peaks", type: .remote,
-                path: nil, remoteURL: base + "photo-1519681393784-d120267933ba?auto=format&fit=crop",
-                gradientColors: nil, category: "mountain"
-            ),
-            WallpaperItem(
-                id: "unsplash-aurora", name: "Northern Lights", type: .remote,
-                path: nil, remoteURL: base + "photo-1531366936337-7c912a4589a7?auto=format&fit=crop",
-                gradientColors: nil, category: "nature"
-            ),
-            WallpaperItem(
-                id: "unsplash-ocean", name: "Ocean Waves", type: .remote,
-                path: nil, remoteURL: base + "photo-1505118380757-91f5f5632de0?auto=format&fit=crop",
-                gradientColors: nil, category: "ocean"
-            ),
-            WallpaperItem(
-                id: "unsplash-misty-forest", name: "Misty Forest", type: .remote,
-                path: nil, remoteURL: base + "photo-1448375240586-882707db888b?auto=format&fit=crop",
-                gradientColors: nil, category: "forest"
-            ),
-            WallpaperItem(
-                id: "unsplash-galaxy", name: "Galaxy", type: .remote,
-                path: nil, remoteURL: base + "photo-1462331940025-496dfbfc7564?auto=format&fit=crop",
-                gradientColors: nil, category: "space"
-            ),
-            WallpaperItem(
-                id: "unsplash-nyc-night", name: "NYC Skyline", type: .remote,
-                path: nil, remoteURL: base + "photo-1514565131-fce0801e5785?auto=format&fit=crop",
-                gradientColors: nil, category: "city"
-            ),
-            WallpaperItem(
-                id: "unsplash-cherry-blossom", name: "Cherry Blossoms", type: .remote,
-                path: nil, remoteURL: base + "photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop",
-                gradientColors: nil, category: "nature"
-            ),
-            WallpaperItem(
-                id: "unsplash-tropical-beach", name: "Tropical Beach", type: .remote,
-                path: nil, remoteURL: base + "photo-1507525428034-b723cf961d3e?auto=format&fit=crop",
-                gradientColors: nil, category: "beach"
-            ),
-            WallpaperItem(
-                id: "unsplash-green-valley", name: "Green Valley", type: .remote,
-                path: nil, remoteURL: base + "photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop",
-                gradientColors: nil, category: "landscape"
-            ),
-            WallpaperItem(
-                id: "unsplash-purple-sunset", name: "Purple Sunset", type: .remote,
-                path: nil, remoteURL: base + "photo-1536431311719-398b6704d4cc?auto=format&fit=crop",
-                gradientColors: nil, category: "landscape"
-            ),
-            WallpaperItem(
-                id: "unsplash-desert-dunes", name: "Desert Dunes", type: .remote,
-                path: nil, remoteURL: base + "photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop",
-                gradientColors: nil, category: "landscape"
-            ),
-            WallpaperItem(
-                id: "unsplash-autumn-road", name: "Autumn Road", type: .remote,
-                path: nil, remoteURL: base + "photo-1508193638397-1c4234db14d8?auto=format&fit=crop",
-                gradientColors: nil, category: "nature"
-            ),
-            WallpaperItem(
-                id: "unsplash-volcano", name: "Volcano", type: .remote,
-                path: nil, remoteURL: base + "photo-1462275646964-a0e3c11f18a6?auto=format&fit=crop",
-                gradientColors: nil, category: "landscape"
-            ),
-            WallpaperItem(
-                id: "unsplash-lightning", name: "Lightning Storm", type: .remote,
-                path: nil, remoteURL: base + "photo-1461511669078-d46bf351cd6e?auto=format&fit=crop",
-                gradientColors: nil, category: "nature"
-            ),
-            WallpaperItem(
-                id: "unsplash-tokyo-night", name: "Tokyo Nights", type: .remote,
-                path: nil, remoteURL: base + "photo-1540959733332-eab4deabeeaf?auto=format&fit=crop",
-                gradientColors: nil, category: "city"
-            ),
-        ])
+        // --- Ocean & Beach ---
+        items.append(wp("ocean-waves", "Ocean Waves", "photo-1505118380757-91f5f5632de0", "ocean"))
+        items.append(wp("tropical-beach", "Tropical Beach", "photo-1507525428034-b723cf961d3e", "beach"))
+        items.append(wp("calm-ocean", "Calm Ocean", "photo-1439405326854-014607f694d7", "ocean"))
+        items.append(wp("aerial-reef", "Aerial Reef", "photo-1518837695005-2083093ee35b", "ocean"))
+        items.append(wp("coastal-cliff", "Coastal Cliff", "photo-1494783367193-149034c05e8f", "ocean"))
 
+        // --- Space & Night Sky ---
+        items.append(wp("galaxy", "Galaxy", "photo-1462331940025-496dfbfc7564", "space"))
+        items.append(wp("earth-space", "Earth from Space", "photo-1451187580459-43490279c0fa", "space"))
+        items.append(wp("starry-sky", "Starry Sky", "photo-1444703686981-a3abbc4d4fe3", "space"))
+        items.append(wp("milky-way", "Milky Way", "photo-1419242902214-272b3f66ee7a", "space"))
+        items.append(wp("nebula-colors", "Nebula", "photo-1543722530-d2c3201371e7", "space"))
+
+        // --- Cities ---
+        items.append(wp("nyc-skyline", "NYC Skyline", "photo-1514565131-fce0801e5785", "city"))
+        items.append(wp("tokyo-nights", "Tokyo Nights", "photo-1540959733332-eab4deabeeaf", "city"))
+        items.append(wp("city-lights", "City Lights", "photo-1477959858617-67f85cf4f1df", "city"))
+        items.append(wp("city-aerial", "City Aerial", "photo-1480714378408-67cf0d13bc1b", "city"))
+        items.append(wp("night-highway", "Night Highway", "photo-1519501025264-65ba15a82390", "city"))
+
+        // --- Nature & Forest ---
+        items.append(wp("aurora-borealis", "Northern Lights", "photo-1531366936337-7c912a4589a7", "nature"))
+        items.append(wp("misty-forest", "Misty Forest", "photo-1448375240586-882707db888b", "forest"))
+        items.append(wp("cherry-blossoms", "Cherry Blossoms", "photo-1493976040374-85c8e12f0c0e", "nature"))
+        items.append(wp("lightning-storm", "Lightning Storm", "photo-1461511669078-d46bf351cd6e", "nature"))
+        items.append(wp("volcano", "Volcano", "photo-1462275646964-a0e3c11f18a6", "nature"))
+        items.append(wp("green-canopy", "Green Canopy", "photo-1441974231531-c6227db76b6e", "forest"))
+        items.append(wp("fog-forest", "Fog Forest", "photo-1418065460487-3e41a6c84dc5", "forest"))
+        items.append(wp("autumn-lake", "Autumn Lake", "photo-1476231682828-37e571bc172f", "nature"))
+        items.append(wp("bamboo-grove", "Bamboo Grove", "photo-1467269204594-9661b134dd2b", "nature"))
+        items.append(wp("lavender-field", "Lavender Field", "photo-1499002238440-d264edd596ec", "nature"))
+
+        // --- Abstract & Artistic ---
+        items.append(wp("neon-glow", "Neon Glow", "photo-1550684376-efcbd6e3f031", "abstract"))
+        items.append(wp("color-gradient", "Color Gradient", "photo-1579546929518-9e396f3cc809", "abstract"))
+        items.append(wp("fluid-art", "Fluid Art", "photo-1558591710-4b4a1ae0f04d", "abstract"))
+        items.append(wp("smoke-colors", "Smoke Colors", "photo-1541701494587-cb58502866ab", "abstract"))
+        items.append(wp("crystal-cave", "Crystal Cave", "photo-1519681393784-d120267933ba", "abstract"))
+
+        // Scan for user-added local wallpapers
         if let enumerator = FileManager.default.enumerator(at: wallpaperDirectory, includingPropertiesForKeys: nil) {
             while let url = enumerator.nextObject() as? URL {
                 let ext = url.pathExtension.lowercased()
                 if ["mp4", "mov", "m4v", "webm"].contains(ext) {
                     items.append(WallpaperItem(
-                        id: url.lastPathComponent,
-                        name: url.deletingPathExtension().lastPathComponent,
-                        type: .video, path: url.path, remoteURL: nil,
-                        gradientColors: nil, category: "custom"
+                        id: "local-\(url.lastPathComponent)", name: url.deletingPathExtension().lastPathComponent,
+                        type: .video, path: url.path, remoteURL: nil, gradientColors: nil, category: "custom"
                     ))
                 } else if ["jpg", "jpeg", "png", "heic", "webp", "tiff"].contains(ext) {
-                    items.append(WallpaperItem(
-                        id: url.lastPathComponent,
-                        name: url.deletingPathExtension().lastPathComponent,
-                        type: .image, path: url.path, remoteURL: nil,
-                        gradientColors: nil, category: "custom"
-                    ))
+                    let name = url.deletingPathExtension().lastPathComponent
+                    if !items.contains(where: { $0.id.hasSuffix(name + ".jpg") }) {
+                        items.append(WallpaperItem(
+                            id: "local-\(url.lastPathComponent)", name: name,
+                            type: .image, path: url.path, remoteURL: nil, gradientColors: nil, category: "custom"
+                        ))
+                    }
                 }
             }
         }

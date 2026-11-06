@@ -85,6 +85,14 @@ struct WallpaperBrowserView: View {
                         height: cardHeight,
                         cachedImage: imageCache.image(for: wallpaper)
                     )
+                    .onHover { hovering in
+                        if hovering {
+                            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                                currentIndex = index
+                                selectedWallpaper = wallpaper
+                            }
+                        }
+                    }
                     .scaleEffect(scale)
                     .rotation3DEffect(
                         .degrees(rotation),
@@ -104,24 +112,6 @@ struct WallpaperBrowserView: View {
                             }
                         }
                     }
-                }
-            }
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    let normalizedX = location.x / geometry.size.width
-                    let target = Int(round(normalizedX * CGFloat(wallpapers.count - 1)))
-                    let clamped = max(0, min(wallpapers.count - 1, target))
-                    if clamped != currentIndex {
-                        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.75)) {
-                            currentIndex = clamped
-                            selectedWallpaper = wallpapers[clamped]
-                        }
-                    }
-                case .ended:
-                    break
-                @unknown default:
-                    break
                 }
             }
         }
