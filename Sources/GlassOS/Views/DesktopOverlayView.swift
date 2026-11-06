@@ -332,8 +332,6 @@ struct GlassWidgetCard<Content: View>: View {
                         .fill(Color.black.opacity(0.3))
                     RoundedRectangle(cornerRadius: 16)
                         .fill(.ultraThinMaterial.opacity(0.35))
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
                 }
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -347,5 +345,9 @@ class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
         let result = super.hitTest(point)
         if result === self { return nil }
         return result
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
     }
 }

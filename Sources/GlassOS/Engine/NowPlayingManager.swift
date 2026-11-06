@@ -66,29 +66,96 @@ class NowPlayingManager: ObservableObject {
     }
 
     func fetchNowPlaying() {
-        _getNowPlayingInfo?(DispatchQueue.main) { [weak self] info in
-            guard let self = self else { return }
-            let newTitle = info["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
-            let titleChanged = newTitle != self.title
+        if let getNowPlayingInfo = _getNowPlayingInfo {
+            getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
+                guard let self = self else { return }
+                let newTitle = info["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
 
-            self.title = newTitle
-            self.artist = info["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
-            self.album = info["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
+                if newTitle.isEmpty {
+                    self.fetchNowPlayingViaAppleScript()
+                    return
+                }
 
-            if let data = info["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data,
-               let img = NSImage(data: data) {
-                self.artwork = img
-            } else if self.artwork != nil && newTitle.isEmpty {
-                self.artwork = nil
+                let titleChanged = newTitle != self.title
+                self.title = newTitle
+                self.artist = info["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
+                self.album = info["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
+
+                if let data = info["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data,
+                   let img = NSImage(data: data) {
+                    self.artwork = img
+                }
+
+                if titleChanged {
+                    self.fetchLyrics()
+                }
             }
-
-            if titleChanged && !newTitle.isEmpty {
-                self.fetchLyrics()
-            }
+        } else {
+            fetchNowPlayingViaAppleScript()
         }
 
         _getIsPlaying?(DispatchQueue.main) { [weak self] playing in
             self?.isPlaying = playing
+        }
+    }
+
+    private func fetchNowPlayingViaAppleScript() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let script = NSAppleScript(source: """
+            tell application "System Events"
+                set musicRunning to (exists (processes where name is "Music"))
+                set spotifyRunning to (exists (processes where name is "Spotify"))
+            end tell
+
+            if musicRunning then
+                tell application "Music"
+                    try
+                        if player state is playing or player state is paused then
+                            set trackName to name of current track
+                            set trackArtist to artist of current track
+                            set trackAlbum to album of current track
+                            set playState to "1"
+                            if player state is paused then set playState to "0"
+                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
+                        end if
+                    end try
+                end tell
+            end if
+
+            if spotifyRunning then
+                tell application "Spotify"
+                    try
+                        if player state is playing or player state is paused then
+                            set trackName to name of current track
+                            set trackArtist to artist of current track
+                            set trackAlbum to album of current track
+                            set playState to "1"
+                            if player state is paused then set playState to "0"
+                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
+                        end if
+                    end try
+                end tell
+            end if
+            return ""
+            """)
+            var error: NSDictionary?
+            let result = script?.executeAndReturnError(&error)
+            let text = result?.stringValue ?? ""
+            if !text.isEmpty {
+                let parts = text.components(separatedBy: "||")
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    let newTitle = parts.count > 0 ? parts[0] : ""
+                    let titleChanged = newTitle != self.title
+                    self.title = newTitle
+                    self.artist = parts.count > 1 ? parts[1] : ""
+                    self.album = parts.count > 2 ? parts[2] : ""
+                    self.isPlaying = parts.count > 3 ? parts[3] == "1" : false
+                    if titleChanged && !newTitle.isEmpty {
+                        self.fetchLyrics()
+                    }
+                }
+            }
         }
     }
 

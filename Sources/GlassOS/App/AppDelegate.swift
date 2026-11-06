@@ -109,7 +109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.normalWindow)) - 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -126,6 +126,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.orderFront(nil)
         desktopWindow = panel
 
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(workspaceAppActivated(_:)),
+            name: NSWorkspace.didActivateApplicationNotification, object: nil
+        )
+
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             if let screen = NSScreen.main {
@@ -134,11 +139,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    @objc private func workspaceAppActivated(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        if app.bundleIdentifier == Bundle.main.bundleIdentifier { return }
+        if app.bundleIdentifier == "com.apple.finder" {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                desktopWindow?.animator().alphaValue = 1.0
+            }
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                desktopWindow?.animator().alphaValue = 0.0
+            }
+        }
+    }
+
     @objc func toggleDesktopOverlay() {
         if desktopOverlayVisible {
-            desktopWindow?.orderOut(nil)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                desktopWindow?.animator().alphaValue = 0.0
+            }
         } else {
             desktopWindow?.orderFront(nil)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                desktopWindow?.animator().alphaValue = 1.0
+            }
         }
         desktopOverlayVisible.toggle()
     }
