@@ -111,7 +111,16 @@ class WallpaperManager: ObservableObject {
         downloadCacheDir = appSupport.appendingPathComponent("GlassOS/DownloadCache")
         try? FileManager.default.createDirectory(at: wallpaperDirectory, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: downloadCacheDir, withIntermediateDirectories: true)
+        cleanupOldCache()
         loadWallpapers()
+    }
+
+    private func cleanupOldCache() {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(at: wallpaperDirectory, includingPropertiesForKeys: nil) else { return }
+        for url in contents where url.lastPathComponent != "Custom" {
+            try? fm.removeItem(at: url)
+        }
     }
 
     func loadWallpapers() {
@@ -187,8 +196,10 @@ class WallpaperManager: ObservableObject {
         items.append(wh("d5gxgj", "Dark Citadel", "jpg", "landscape"))
         items.append(wh("gpgk57", "Wanderer", "jpg", "landscape"))
 
-        // Scan for user-added local wallpapers
-        if let enumerator = FileManager.default.enumerator(at: wallpaperDirectory, includingPropertiesForKeys: nil) {
+        // Scan for user-added local wallpapers in Custom subfolder
+        let customDir = wallpaperDirectory.appendingPathComponent("Custom")
+        try? FileManager.default.createDirectory(at: customDir, withIntermediateDirectories: true)
+        if let enumerator = FileManager.default.enumerator(at: customDir, includingPropertiesForKeys: nil) {
             while let url = enumerator.nextObject() as? URL {
                 let ext = url.pathExtension.lowercased()
                 if ["mp4", "mov", "m4v", "webm"].contains(ext) {
@@ -246,7 +257,9 @@ class WallpaperManager: ObservableObject {
     }
 
     func addWallpaper(from url: URL) {
-        let destination = wallpaperDirectory.appendingPathComponent(url.lastPathComponent)
+        let customDir = wallpaperDirectory.appendingPathComponent("Custom")
+        try? FileManager.default.createDirectory(at: customDir, withIntermediateDirectories: true)
+        let destination = customDir.appendingPathComponent(url.lastPathComponent)
         try? FileManager.default.copyItem(at: url, to: destination)
         loadWallpapers()
     }

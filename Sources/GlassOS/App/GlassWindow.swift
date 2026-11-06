@@ -32,7 +32,7 @@ class GlassWindow: NSWindow {
         glass.blendingMode = .behindWindow
         glass.state = .active
         glass.material = .fullScreenUI
-        glass.alphaValue = 0.55
+        glass.alphaValue = 0.30
         glass.autoresizingMask = [.width, .height]
         container.addSubview(glass)
 
