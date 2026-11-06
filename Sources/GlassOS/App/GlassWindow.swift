@@ -8,38 +8,24 @@ class GlassWindow: NSWindow {
         defer flag: Bool
     ) {
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
-
-        let visualEffect = NSVisualEffectView()
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.state = .active
-        visualEffect.material = .hudWindow
-        visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = 16
-        visualEffect.layer?.masksToBounds = true
-
-        contentView = visualEffect
         isOpaque = false
         backgroundColor = .clear
     }
 
-    override var contentView: NSView? {
-        didSet {
-            if let hosting = contentView, !(contentView is NSVisualEffectView) {
-                let visualEffect = NSVisualEffectView(frame: bounds)
-                visualEffect.blendingMode = .behindWindow
-                visualEffect.state = .active
-                visualEffect.material = .hudWindow
-                visualEffect.wantsLayer = true
-                visualEffect.layer?.cornerRadius = 16
-                visualEffect.layer?.masksToBounds = true
-                visualEffect.autoresizingMask = [.width, .height]
+    func setGlassContent(_ view: NSView) {
+        let visualEffect = NSVisualEffectView(frame: contentRect(forFrameRect: frame))
+        visualEffect.blendingMode = NSVisualEffectView.BlendingMode.behindWindow
+        visualEffect.state = NSVisualEffectView.State.active
+        visualEffect.material = NSVisualEffectView.Material.hudWindow
+        visualEffect.wantsLayer = true
+        visualEffect.layer?.cornerRadius = 16
+        visualEffect.layer?.masksToBounds = true
+        visualEffect.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
 
-                hosting.frame = visualEffect.bounds
-                hosting.autoresizingMask = [.width, .height]
-                visualEffect.addSubview(hosting)
+        view.frame = visualEffect.bounds
+        view.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
+        visualEffect.addSubview(view)
 
-                super.contentView = visualEffect
-            }
-        }
+        contentView = visualEffect
     }
 }

@@ -85,7 +85,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow?.hasShadow = true
         mainWindow?.center()
         mainWindow?.setFrameAutosaveName("GlassOS.Main")
-        mainWindow?.contentView = NSHostingView(rootView: contentView)
+        let hostingView = NSHostingView(rootView: contentView)
+        (mainWindow as? GlassWindow)?.setGlassContent(hostingView)
         mainWindow?.makeKeyAndOrderFront(nil)
     }
 
@@ -168,7 +169,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
         window.center()
-        window.contentView = NSHostingView(rootView: settingsView)
+        window.setGlassContent(NSHostingView(rootView: settingsView))
         window.makeKeyAndOrderFront(nil)
     }
 
@@ -188,7 +189,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.titleVisibility = .hidden
         window.backgroundColor = .clear
         window.center()
-        window.contentView = NSHostingView(rootView: aboutView)
+        window.setGlassContent(NSHostingView(rootView: aboutView))
         window.makeKeyAndOrderFront(nil)
     }
 }
