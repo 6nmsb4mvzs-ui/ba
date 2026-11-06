@@ -3,10 +3,9 @@ import AVFoundation
 
 struct WallpaperBrowserView: View {
     @EnvironmentObject var wallpaperManager: WallpaperManager
+    @ObservedObject var imageCache = ImageCache.shared
     @State private var selectedWallpaper: WallpaperItem?
     @State private var showCarousel = true
-    @State private var importerPresented = false
-    @State private var dragOffset: CGFloat = 0
     @State private var currentIndex: Int = 0
 
     var body: some View {
@@ -55,30 +54,6 @@ struct WallpaperBrowserView: View {
                         .foregroundColor(!showCarousel ? .cyan : .white.opacity(0.5))
                 }
                 .buttonStyle(.plain)
-
-                Divider()
-                    .frame(height: 20)
-                    .opacity(0.3)
-
-                Button(action: { importerPresented = true }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                        Text("Add")
-                    }
-                    .font(.body)
-                    .foregroundColor(.cyan)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.cyan.opacity(0.15))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -87,26 +62,28 @@ struct WallpaperBrowserView: View {
         GeometryReader { geometry in
             let cardWidth: CGFloat = min(280, geometry.size.width * 0.25)
             let cardHeight: CGFloat = cardWidth * 1.6
-            let spacing: CGFloat = 20
             let centerX = geometry.size.width / 2
+            let wallpapers = wallpaperManager.wallpapers
 
             ZStack {
-                ForEach(Array(wallpaperManager.wallpapers.enumerated()), id: \.element.id) { index, wallpaper in
+                ForEach(Array(wallpapers.enumerated()), id: \.element.id) { index, wallpaper in
                     let offset = CGFloat(index - currentIndex)
-                    let xPos = centerX + (offset * (cardWidth * 0.6 + spacing)) + dragOffset * 0.6
+                    let spacing: CGFloat = cardWidth * 0.65
+                    let xPos = centerX + (offset * spacing)
                     let distFromCenter = abs(xPos - centerX)
                     let maxDist = geometry.size.width / 2
                     let normalizedDist = min(distFromCenter / maxDist, 1.0)
                     let scale = 1.0 - (normalizedDist * 0.35)
                     let zIndex = 100.0 - Double(abs(index - currentIndex))
                     let rotation = -normalizedDist * 25 * (xPos < centerX ? -1 : 1)
-                    let opacity = max(0.3, 1.0 - normalizedDist * 0.7)
+                    let cardOpacity = max(0.3, 1.0 - normalizedDist * 0.7)
 
                     WallpaperCarouselCard(
                         wallpaper: wallpaper,
                         isSelected: selectedWallpaper?.id == wallpaper.id,
                         width: cardWidth,
-                        height: cardHeight
+                        height: cardHeight,
+                        cachedImage: imageCache.image(for: wallpaper)
                     )
                     .scaleEffect(scale)
                     .rotation3DEffect(
@@ -114,7 +91,7 @@ struct WallpaperBrowserView: View {
                         axis: (x: 0, y: 1, z: 0),
                         perspective: 0.5
                     )
-                    .opacity(opacity)
+                    .opacity(cardOpacity)
                     .position(x: xPos, y: geometry.size.height / 2)
                     .zIndex(zIndex)
                     .onTapGesture {
@@ -129,23 +106,24 @@ struct WallpaperBrowserView: View {
                     }
                 }
             }
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        dragOffset = value.translation.width
-                    }
-                    .onEnded { value in
-                        let threshold: CGFloat = 50
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            if value.translation.width < -threshold {
-                                currentIndex = min(currentIndex + 1, wallpaperManager.wallpapers.count - 1)
-                            } else if value.translation.width > threshold {
-                                currentIndex = max(currentIndex - 1, 0)
-                            }
-                            dragOffset = 0
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    let normalizedX = location.x / geometry.size.width
+                    let target = Int(round(normalizedX * CGFloat(wallpapers.count - 1)))
+                    let clamped = max(0, min(wallpapers.count - 1, target))
+                    if clamped != currentIndex {
+                        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.75)) {
+                            currentIndex = clamped
+                            selectedWallpaper = wallpapers[clamped]
                         }
                     }
-            )
+                case .ended:
+                    break
+                @unknown default:
+                    break
+                }
+            }
         }
     }
 
@@ -157,7 +135,8 @@ struct WallpaperBrowserView: View {
                 ForEach(wallpaperManager.wallpapers) { wallpaper in
                     WallpaperGridCard(
                         wallpaper: wallpaper,
-                        isSelected: selectedWallpaper?.id == wallpaper.id
+                        isSelected: selectedWallpaper?.id == wallpaper.id,
+                        cachedImage: imageCache.image(for: wallpaper)
                     )
                     .onTapGesture {
                         withAnimation {
@@ -178,7 +157,7 @@ struct WallpaperBrowserView: View {
                         Text(selected.name)
                             .font(.headline)
                             .foregroundColor(.white)
-                        Text(selected.type.rawValue)
+                        Text(selected.category?.capitalized ?? selected.type.rawValue)
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -210,11 +189,9 @@ struct WallpaperBrowserView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(16)
-                .background(
-                    GlassBackground(cornerRadius: 12)
-                )
+                .background(GlassBackground(cornerRadius: 12))
             } else {
-                Text("Select a wallpaper to preview")
+                Text("Hover over wallpapers to browse, click to select")
                     .font(.body)
                     .foregroundColor(.white.opacity(0.4))
                     .frame(maxWidth: .infinity)
@@ -229,36 +206,42 @@ struct WallpaperCarouselCard: View {
     let isSelected: Bool
     let width: CGFloat
     let height: CGFloat
+    let cachedImage: NSImage?
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(
-                    LinearGradient(
-                        colors: wallpaper.previewColors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+            if let nsImage = cachedImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            } else {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            colors: wallpaper.previewColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
+                    .frame(width: width, height: height)
+                    .overlay(
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .tint(.white.opacity(0.5))
+                    )
+            }
+
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(
+                    isSelected ?
+                        LinearGradient(colors: [.cyan, .blue], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                        LinearGradient(colors: [.white.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: isSelected ? 2 : 1
                 )
                 .frame(width: width, height: height)
-                .overlay(
-                    ZStack {
-                        if wallpaper.type == .video {
-                            Image(systemName: "play.circle.fill")
-                                .font(.largeTitle)
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-                    }
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            isSelected ?
-                                LinearGradient(colors: [.cyan, .blue], startPoint: .topLeading, endPoint: .bottomTrailing) :
-                                LinearGradient(colors: [.white.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            lineWidth: isSelected ? 2 : 1
-                        )
-                )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(wallpaper.name)
@@ -266,9 +249,9 @@ struct WallpaperCarouselCard: View {
                     .foregroundColor(.white)
                     .lineLimit(1)
                 HStack {
-                    Image(systemName: wallpaper.type == .video ? "film" : "photo")
+                    Image(systemName: iconForType)
                         .font(.caption2)
-                    Text(wallpaper.type.rawValue)
+                    Text(wallpaper.category?.capitalized ?? wallpaper.type.rawValue)
                         .font(.caption2)
                 }
                 .foregroundColor(.white.opacity(0.6))
@@ -289,37 +272,56 @@ struct WallpaperCarouselCard: View {
         .frame(width: width, height: height)
         .shadow(color: isSelected ? .cyan.opacity(0.3) : .black.opacity(0.3), radius: isSelected ? 20 : 10)
     }
+
+    private var iconForType: String {
+        switch wallpaper.type {
+        case .video: return "film"
+        case .remote: return "arrow.down.circle"
+        case .image: return "photo"
+        case .gradient: return "paintpalette"
+        }
+    }
 }
 
 struct WallpaperGridCard: View {
     let wallpaper: WallpaperItem
     let isSelected: Bool
+    let cachedImage: NSImage?
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: wallpaper.previewColors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+            if let nsImage = cachedImage {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(minHeight: 120)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        LinearGradient(
+                            colors: wallpaper.previewColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .aspectRatio(16/10, contentMode: .fit)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(isSelected ? Color.cyan : Color.white.opacity(0.1), lineWidth: isSelected ? 2 : 1)
-                )
+                    .aspectRatio(16/10, contentMode: .fit)
+                    .overlay(
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .tint(.white.opacity(0.4))
+                    )
+            }
+
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isSelected ? Color.cyan : Color.white.opacity(0.1), lineWidth: isSelected ? 2 : 1)
 
             HStack {
                 Text(wallpaper.name)
                     .font(.caption.bold())
                     .foregroundColor(.white)
                 Spacer()
-                if wallpaper.type == .video {
-                    Image(systemName: "play.circle.fill")
-                        .foregroundColor(.white.opacity(0.7))
-                }
             }
             .padding(10)
             .background(.ultraThinMaterial.opacity(0.8))
@@ -335,31 +337,31 @@ struct RoundedCorner: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let topLeft = corners.contains(.topLeft) ? radius : 0
-        let topRight = corners.contains(.topRight) ? radius : 0
-        let bottomLeft = corners.contains(.bottomLeft) ? radius : 0
-        let bottomRight = corners.contains(.bottomRight) ? radius : 0
+        let tl = corners.contains(.topLeft) ? radius : 0
+        let tr = corners.contains(.topRight) ? radius : 0
+        let bl = corners.contains(.bottomLeft) ? radius : 0
+        let br = corners.contains(.bottomRight) ? radius : 0
 
-        path.move(to: CGPoint(x: rect.minX + topLeft, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - topRight, y: rect.minY))
-        if topRight > 0 {
-            path.addArc(center: CGPoint(x: rect.maxX - topRight, y: rect.minY + topRight),
-                       radius: topRight, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        path.move(to: CGPoint(x: rect.minX + tl, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY))
+        if tr > 0 {
+            path.addArc(center: CGPoint(x: rect.maxX - tr, y: rect.minY + tr),
+                       radius: tr, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
         }
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bottomRight))
-        if bottomRight > 0 {
-            path.addArc(center: CGPoint(x: rect.maxX - bottomRight, y: rect.maxY - bottomRight),
-                       radius: bottomRight, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - br))
+        if br > 0 {
+            path.addArc(center: CGPoint(x: rect.maxX - br, y: rect.maxY - br),
+                       radius: br, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
         }
-        path.addLine(to: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY))
-        if bottomLeft > 0 {
-            path.addArc(center: CGPoint(x: rect.minX + bottomLeft, y: rect.maxY - bottomLeft),
-                       radius: bottomLeft, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.minX + bl, y: rect.maxY))
+        if bl > 0 {
+            path.addArc(center: CGPoint(x: rect.minX + bl, y: rect.maxY - bl),
+                       radius: bl, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
         }
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + topLeft))
-        if topLeft > 0 {
-            path.addArc(center: CGPoint(x: rect.minX + topLeft, y: rect.minY + topLeft),
-                       radius: topLeft, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + tl))
+        if tl > 0 {
+            path.addArc(center: CGPoint(x: rect.minX + tl, y: rect.minY + tl),
+                       radius: tl, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
         }
         path.closeSubpath()
         return path
