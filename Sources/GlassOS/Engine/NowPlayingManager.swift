@@ -28,8 +28,80 @@ class NowPlayingManager: ObservableObject {
 
     private init() {
         loadMediaRemote()
+        setupDistributedNotifications()
         startPolling()
     }
+
+    // MARK: - Distributed Notifications (primary — no permissions needed)
+
+    private func setupDistributedNotifications() {
+        let dnc = DistributedNotificationCenter.default()
+
+        dnc.addObserver(
+            self, selector: #selector(musicNotification(_:)),
+            name: NSNotification.Name("com.apple.Music.playerInfo"), object: nil
+        )
+        dnc.addObserver(
+            self, selector: #selector(spotifyNotification(_:)),
+            name: NSNotification.Name("com.spotify.client.PlaybackStateChanged"), object: nil
+        )
+    }
+
+    @objc private func musicNotification(_ notification: Notification) {
+        guard let info = notification.userInfo else {
+            fetchNowPlaying()
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            let newTitle = info["Name"] as? String ?? ""
+            guard !newTitle.isEmpty else { return }
+
+            let titleChanged = newTitle != self.title
+            self.title = newTitle
+            self.artist = info["Artist"] as? String ?? ""
+            self.album = info["Album"] as? String ?? ""
+
+            let state = info["Player State"] as? String ?? ""
+            self.isPlaying = (state == "Playing")
+
+            if titleChanged {
+                self.fetchArtwork()
+                self.fetchLyrics()
+            }
+        }
+    }
+
+    @objc private func spotifyNotification(_ notification: Notification) {
+        guard let info = notification.userInfo else {
+            fetchNowPlaying()
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            let newTitle = info["Name"] as? String ?? ""
+            guard !newTitle.isEmpty else { return }
+
+            let titleChanged = newTitle != self.title
+            self.title = newTitle
+            self.artist = info["Artist"] as? String ?? ""
+            self.album = info["Album"] as? String ?? ""
+
+            let state = info["Player State"] as? String ?? ""
+            self.isPlaying = (state == "Playing")
+
+            if titleChanged {
+                self.fetchArtwork()
+            }
+            self.lyrics = ""
+        }
+    }
+
+    // MARK: - MediaRemote (fallback for initial state and artwork)
 
     private func loadMediaRemote() {
         let path = "/System/Library/PrivateFrameworks/MediaRemote.framework" as CFString
@@ -46,56 +118,26 @@ class NowPlayingManager: ObservableObject {
             _getIsPlaying = unsafeBitCast(ptr, to: MRStateCallback.self)
         }
 
-        // Load key string constants dynamically from the framework
         loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoTitle", into: &titleKey)
         loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoArtist", into: &artistKey)
         loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoAlbum", into: &albumKey)
         loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoArtworkData", into: &artworkKey)
 
-        // Register for now-playing notifications — required for the API to return data
         if let ptr = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteRegisterForNowPlayingNotifications" as CFString) {
             let register = unsafeBitCast(ptr, to: MRRegisterNotifs.self)
             register(DispatchQueue.main)
         }
-
-        DistributedNotificationCenter.default().addObserver(
-            self, selector: #selector(mediaChanged),
-            name: NSNotification.Name("com.apple.Music.playerInfo"), object: nil
-        )
-        DistributedNotificationCenter.default().addObserver(
-            self, selector: #selector(mediaChanged),
-            name: NSNotification.Name("com.spotify.client.PlaybackStateChanged"), object: nil
-        )
-
-        // Generic now-playing change notification
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(mediaChanged),
-            name: NSNotification.Name("kMRMediaRemoteNowPlayingInfoDidChangeNotification"), object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(mediaChanged),
-            name: NSNotification.Name("kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification"), object: nil
-        )
     }
 
     private func loadKeyString(_ bundle: CFBundle, symbol: String, into target: inout String) {
         guard let ptr = CFBundleGetDataPointerForName(bundle, symbol as CFString) else { return }
-        // The symbol is a global NSString* — dereference the pointer to get the NSString
-        let rawValue = ptr.load(as: UnsafeRawPointer?.self)
-        guard let rawValue = rawValue else { return }
-        let nsString = Unmanaged<NSString>.fromOpaque(rawValue).takeUnretainedValue()
-        target = nsString as String
+        guard let rawValue = ptr.load(as: UnsafeRawPointer?.self) else { return }
+        target = Unmanaged<NSString>.fromOpaque(rawValue).takeUnretainedValue() as String
     }
 
     private func startPolling() {
         fetchNowPlaying()
-        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            self?.fetchNowPlaying()
-        }
-    }
-
-    @objc private func mediaChanged(_ notification: Notification) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.fetchNowPlaying()
         }
     }
@@ -135,6 +177,21 @@ class NowPlayingManager: ObservableObject {
             self?.isPlaying = playing
         }
     }
+
+    // MARK: - Artwork via MediaRemote
+
+    private func fetchArtwork() {
+        guard let getNowPlayingInfo = _getNowPlayingInfo else { return }
+        getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
+            guard let self = self else { return }
+            if let data = info[self.artworkKey] as? Data,
+               let img = NSImage(data: data) {
+                self.artwork = img
+            }
+        }
+    }
+
+    // MARK: - AppleScript fallback
 
     private func fetchNowPlayingViaAppleScript() {
         DispatchQueue.global(qos: .utility).async { [weak self] in

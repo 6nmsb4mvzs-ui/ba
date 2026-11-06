@@ -291,11 +291,6 @@ struct GlassWidgetCard<Content: View>: View {
 
     var body: some View {
         content
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.black.opacity(0.35))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
 
