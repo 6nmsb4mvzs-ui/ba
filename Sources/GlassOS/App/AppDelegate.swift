@@ -3,13 +3,16 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var mainWindow: NSWindow?
+    var desktopWindow: NSWindow?
     var statusItem: NSStatusItem?
     var wallpaperEngine: WallpaperEngine?
     var hotkeyManager: GlobalHotkeyManager?
     var navigatorPanel: NSPanel?
+    var desktopOverlayVisible = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
+        setupDesktopOverlay()
         setupMainWindow()
         setupWallpaperEngine()
         setupGlobalHotkeys()
@@ -43,6 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainMenu.addItem(appMenuItem)
 
         let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(withTitle: "Toggle Desktop Widgets", action: #selector(toggleDesktopOverlay), keyEquivalent: "d")
         viewMenu.addItem(withTitle: "Show Wallpaper Browser", action: #selector(showMainWindow), keyEquivalent: "b")
         viewMenu.addItem(withTitle: "Show Window Navigator", action: #selector(showNavigator), keyEquivalent: "")
 
@@ -60,6 +64,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         let statusMenu = NSMenu()
+        statusMenu.addItem(withTitle: "Toggle Desktop Widgets", action: #selector(toggleDesktopOverlay), keyEquivalent: "")
         statusMenu.addItem(withTitle: "Show Wallpaper Browser", action: #selector(showMainWindow), keyEquivalent: "")
         statusMenu.addItem(withTitle: "Window Navigator (F3)", action: #selector(showNavigator), keyEquivalent: "")
         statusMenu.addItem(NSMenuItem.separator())
@@ -93,6 +98,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hostingView = NSHostingView(rootView: contentView)
         (mainWindow as? GlassWindow)?.setGlassContent(hostingView)
         mainWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func setupDesktopOverlay() {
+        guard let screen = NSScreen.main else { return }
+
+        let window = NSWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+
+        let overlayView = DesktopOverlayView()
+        let hostingView = ClickThroughHostingView(rootView: overlayView)
+        window.contentView = hostingView
+
+        window.orderFront(nil)
+        desktopWindow = window
+
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            if let screen = NSScreen.main {
+                self?.desktopWindow?.setFrame(screen.frame, display: true)
+            }
+        }
+    }
+
+    @objc func toggleDesktopOverlay() {
+        if desktopOverlayVisible {
+            desktopWindow?.orderOut(nil)
+        } else {
+            desktopWindow?.orderFront(nil)
+        }
+        desktopOverlayVisible.toggle()
     }
 
     private func setupWallpaperEngine() {
