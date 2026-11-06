@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 class NowPlayingManager: ObservableObject {
     static let shared = NowPlayingManager()
@@ -9,15 +10,17 @@ class NowPlayingManager: ObservableObject {
     @Published var artwork: NSImage?
     @Published var isPlaying: Bool = false
     @Published var lyrics: String = ""
-    @Published var playerPosition: Double = 0
-    @Published var duration: Double = 0
 
     private var timer: Timer?
+    private var mrBundle: CFBundle?
 
-    private typealias MRNowPlayingInfoFunction = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
-    private typealias MRNowPlayingStateFunction = @convention(c) (DispatchQueue, @escaping (Int) -> Void) -> Void
-    private var getNowPlayingInfo: MRNowPlayingInfoFunction?
-    private var getNowPlayingState: MRNowPlayingStateFunction?
+    private typealias MRInfoCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
+    private typealias MRStateCallback = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
+    private typealias MRRegisterCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
+
+    private var _getNowPlayingInfo: MRInfoCallback?
+    private var _getIsPlaying: MRStateCallback?
+    private var _registerForNowPlayingNotifications: MRRegisterCallback?
 
     private init() {
         loadMediaRemote()
@@ -25,83 +28,95 @@ class NowPlayingManager: ObservableObject {
     }
 
     private func loadMediaRemote() {
-        guard let bundle = CFBundleCreate(kCFAllocatorDefault,
-            NSURL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework")) else { return }
+        let path = "/System/Library/PrivateFrameworks/MediaRemote.framework" as CFString
+        guard let url = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, path, .cfurlposixPathStyle, true),
+              let bundle = CFBundleCreate(kCFAllocatorDefault, url) else { return }
+        mrBundle = bundle
 
-        if let ptr = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteGetNowPlayingInfo" as CFString) {
-            getNowPlayingInfo = unsafeBitCast(ptr, to: MRNowPlayingInfoFunction.self)
-        }
-
-        if let ptr = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying" as CFString) {
-            getNowPlayingState = unsafeBitCast(ptr, to: MRNowPlayingStateFunction.self)
+        if CFBundleLoadExecutable(bundle) {
+            if let ptr = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteGetNowPlayingInfo" as CFString) {
+                _getNowPlayingInfo = unsafeBitCast(ptr, to: MRInfoCallback.self)
+            }
+            if let ptr = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying" as CFString) {
+                _getIsPlaying = unsafeBitCast(ptr, to: MRStateCallback.self)
+            }
         }
 
         DistributedNotificationCenter.default().addObserver(
-            self, selector: #selector(nowPlayingChanged),
+            self, selector: #selector(mediaChanged),
             name: NSNotification.Name("com.apple.Music.playerInfo"), object: nil
+        )
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(mediaChanged),
+            name: NSNotification.Name("com.spotify.client.PlaybackStateChanged"), object: nil
         )
     }
 
     private func startPolling() {
-        update()
+        fetchNowPlaying()
         timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            self?.update()
+            self?.fetchNowPlaying()
         }
     }
 
-    @objc private func nowPlayingChanged(_ notification: Notification) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.update()
+    @objc private func mediaChanged(_ notification: Notification) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.fetchNowPlaying()
         }
     }
 
-    func update() {
-        getNowPlayingInfo?(DispatchQueue.main) { [weak self] info in
+    func fetchNowPlaying() {
+        _getNowPlayingInfo?(DispatchQueue.main) { [weak self] info in
+            guard let self = self else { return }
             let newTitle = info["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
-            let newArtist = info["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
-            let titleChanged = newTitle != self?.title
+            let titleChanged = newTitle != self.title
 
-            self?.title = newTitle
-            self?.artist = newArtist
-            self?.album = info["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
-            self?.duration = info["kMRMediaRemoteNowPlayingInfoDuration"] as? Double ?? 0
-            self?.playerPosition = info["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double ?? 0
+            self.title = newTitle
+            self.artist = info["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
+            self.album = info["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
 
-            if let artworkData = info["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data {
-                self?.artwork = NSImage(data: artworkData)
+            if let data = info["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data,
+               let img = NSImage(data: data) {
+                self.artwork = img
+            } else if self.artwork != nil && newTitle.isEmpty {
+                self.artwork = nil
             }
 
             if titleChanged && !newTitle.isEmpty {
-                self?.fetchLyrics()
+                self.fetchLyrics()
             }
         }
 
-        getNowPlayingState?(DispatchQueue.main) { [weak self] state in
-            self?.isPlaying = state == 1
+        _getIsPlaying?(DispatchQueue.main) { [weak self] playing in
+            self?.isPlaying = playing
         }
     }
 
     private func fetchLyrics() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let script = NSAppleScript(source: """
-                tell application "System Events"
-                    if exists (processes where name is "Music") then
-                        tell application "Music"
-                            if player state is playing then
-                                try
-                                    return lyrics of current track
-                                end try
+            tell application "System Events"
+                set musicRunning to (exists (processes where name is "Music"))
+            end tell
+            if musicRunning then
+                tell application "Music"
+                    try
+                        if player state is playing or player state is paused then
+                            set theLyrics to lyrics of current track
+                            if theLyrics is not missing value then
+                                return theLyrics
                             end if
-                        end tell
-                    end if
+                        end if
+                    end try
                 end tell
-                return ""
+            end if
+            return ""
             """)
             var error: NSDictionary?
             let result = script?.executeAndReturnError(&error)
-            let lyricsText = result?.stringValue ?? ""
+            let text = result?.stringValue ?? ""
             DispatchQueue.main.async {
-                self?.lyrics = lyricsText
+                self?.lyrics = text
             }
         }
     }

@@ -3,10 +3,12 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var wallpaperManager: WallpaperManager
     @EnvironmentObject var updater: AutoUpdater
+    @ObservedObject var fontManager = FontManager.shared
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showMenuBar") private var showMenuBar = true
     @AppStorage("hotkey_enabled") private var hotkeyEnabled = true
     @AppStorage("wallpaper_quality") private var wallpaperQuality = "High"
+    @State private var showAllFonts = false
 
     let qualities = ["Low", "Medium", "High", "Ultra"]
 
@@ -26,6 +28,97 @@ struct SettingsView: View {
                         GlassToggle(title: "Launch at Login", isOn: $launchAtLogin)
                         Divider().opacity(0.2).padding(.horizontal, 16)
                         GlassToggle(title: "Show Menu Bar Icon", isOn: $showMenuBar)
+                    }
+                }
+                .padding(.horizontal, 24)
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 0) {
+                        sectionHeader("Fonts")
+
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text("Clock Font")
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Picker("", selection: $fontManager.clockFontFamily) {
+                                    Text("System Default").tag("")
+                                    Divider()
+                                    if showAllFonts {
+                                        ForEach(fontManager.allFontFamilies.dropFirst(), id: \.self) { family in
+                                            Text(family).tag(family)
+                                        }
+                                    } else {
+                                        ForEach(FontManager.recommendedFonts.dropFirst(), id: \.self) { family in
+                                            Text(family).tag(family)
+                                        }
+                                    }
+                                }
+                                .frame(width: 200)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+
+                            Divider().opacity(0.2).padding(.horizontal, 16)
+
+                            HStack {
+                                Spacer()
+                                Button(action: { showAllFonts.toggle() }) {
+                                    Text(showAllFonts ? "Show Recommended" : "Show All Fonts")
+                                        .font(.caption)
+                                        .foregroundColor(.cyan)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
+
+                            Divider().opacity(0.2).padding(.horizontal, 16)
+
+                            HStack {
+                                Text("Weight")
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Picker("", selection: $fontManager.clockFontWeight) {
+                                    ForEach(FontManager.weightOptions, id: \.0) { name, _ in
+                                        Text(name).tag(name.lowercased().replacingOccurrences(of: " ", with: ""))
+                                    }
+                                }
+                                .frame(width: 200)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+
+                            Divider().opacity(0.2).padding(.horizontal, 16)
+
+                            HStack {
+                                Text("Size")
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text("\(Int(fontManager.clockFontSize))pt")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundColor(.cyan)
+                                    .frame(width: 50, alignment: .trailing)
+                                Slider(value: $fontManager.clockFontSize, in: 32...120, step: 2)
+                                    .frame(width: 150)
+                                    .tint(.cyan)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+
+                            Divider().opacity(0.2).padding(.horizontal, 16)
+
+                            VStack(spacing: 4) {
+                                Text("12:34")
+                                    .font(fontManager.clockFont(size: 42))
+                                    .foregroundColor(.white)
+                                Text("Monday, 1 January")
+                                    .font(fontManager.dateFont(size: 14))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                        }
                     }
                 }
                 .padding(.horizontal, 24)
