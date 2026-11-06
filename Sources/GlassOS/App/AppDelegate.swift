@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var wallpaperPanel: NSPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        hideDock()
         setupMenuBar()
         setupDesktopOverlay()
         setupMainWindow()
@@ -27,6 +28,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else {
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        restoreDock()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -122,9 +127,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         clockPanel?.contentView = NSHostingView(rootView: ClockOverlayView())
         clockPanel?.orderFront(nil)
 
-        // Now Playing — top left, interactive
+        // Now Playing — top left, interactive (wider for controls + next-up queue)
         nowPlayingPanel = makeOverlayPanel(
-            frame: NSRect(x: sf.minX + 24, y: sf.maxY - 520, width: 310, height: 400),
+            frame: NSRect(x: sf.minX + 60, y: sf.maxY - 780, width: 340, height: 680),
             level: widgetLevel
         )
         nowPlayingPanel?.contentView = WidgetHostingView(rootView: NowPlayingOverlayView())
@@ -177,7 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let screen = NSScreen.main else { return }
         let sf = screen.frame
         clockPanel?.setFrame(NSRect(x: sf.midX - 220, y: sf.maxY - 130, width: 440, height: 110), display: true)
-        nowPlayingPanel?.setFrame(NSRect(x: sf.minX + 24, y: sf.maxY - 520, width: 310, height: 400), display: true)
+        nowPlayingPanel?.setFrame(NSRect(x: sf.minX + 60, y: sf.maxY - 780, width: 340, height: 680), display: true)
         appLauncherPanel?.setFrame(NSRect(x: sf.midX - 265, y: sf.midY - 200, width: 530, height: 400), display: true)
         let wpHeight = min(sf.height - 80, 620)
         wallpaperPanel?.setFrame(NSRect(x: sf.maxX - 260, y: sf.midY - wpHeight / 2, width: 240, height: wpHeight), display: true)
@@ -194,6 +199,40 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             allOverlayPanels.forEach { $0?.orderFront(nil) }
         }
         desktopOverlayVisible.toggle()
+    }
+
+    // MARK: - Dock Hiding
+
+    private func hideDock() {
+        let cmds = [
+            "defaults write com.apple.dock autohide -bool true",
+            "defaults write com.apple.dock autohide-delay -float 1000",
+            "defaults write com.apple.dock autohide-time-modifier -float 0",
+            "killall Dock"
+        ]
+        for cmd in cmds {
+            let task = Process()
+            task.launchPath = "/bin/bash"
+            task.arguments = ["-c", cmd]
+            try? task.run()
+            task.waitUntilExit()
+        }
+    }
+
+    private func restoreDock() {
+        let cmds = [
+            "defaults delete com.apple.dock autohide-delay",
+            "defaults delete com.apple.dock autohide-time-modifier",
+            "defaults write com.apple.dock autohide -bool false",
+            "killall Dock"
+        ]
+        for cmd in cmds {
+            let task = Process()
+            task.launchPath = "/bin/bash"
+            task.arguments = ["-c", cmd]
+            try? task.run()
+            task.waitUntilExit()
+        }
     }
 
     private func setupWallpaperEngine() {

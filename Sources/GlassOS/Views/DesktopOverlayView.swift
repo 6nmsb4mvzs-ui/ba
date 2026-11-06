@@ -41,55 +41,129 @@ struct NowPlayingOverlayView: View {
     @ObservedObject var nowPlaying = NowPlayingManager.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             GlassWidgetCard {
-                HStack(spacing: 12) {
-                    if let art = nowPlaying.artwork {
-                        Image(nsImage: art)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 80, height: 80)
-                            .cornerRadius(10)
-                            .clipped()
-                    } else {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(LinearGradient(colors: [.cyan.opacity(0.15), .blue.opacity(0.15)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 80, height: 80)
-                            .overlay(
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.white.opacity(0.25))
-                            )
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        if !nowPlaying.title.isEmpty {
-                            Text(nowPlaying.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                            Text(nowPlaying.artist)
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.55))
-                                .lineLimit(1)
-                            if !nowPlaying.album.isEmpty {
-                                Text(nowPlaying.album)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.35))
-                                    .lineLimit(1)
-                            }
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        if let art = nowPlaying.artwork {
+                            Image(nsImage: art)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 72, height: 72)
+                                .cornerRadius(10)
+                                .clipped()
                         } else {
-                            Text("Not Playing")
-                                .font(.system(size: 13))
-                                .foregroundColor(.white.opacity(0.35))
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(LinearGradient(colors: [.cyan.opacity(0.15), .blue.opacity(0.15)],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 72, height: 72)
+                                .overlay(
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.white.opacity(0.25))
+                                )
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            if !nowPlaying.title.isEmpty {
+                                Text(nowPlaying.title)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(2)
+                                Text(nowPlaying.artist)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.55))
+                                    .lineLimit(1)
+                                if !nowPlaying.album.isEmpty {
+                                    Text(nowPlaying.album)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.white.opacity(0.35))
+                                        .lineLimit(1)
+                                }
+                            } else {
+                                Text("Not Playing")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.white.opacity(0.35))
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14)
+                    .padding(.bottom, 10)
+
+                    // Progress bar
+                    VStack(spacing: 4) {
+                        GeometryReader { geo in
+                            let progress = nowPlaying.duration > 0
+                                ? min(nowPlaying.elapsedTime / nowPlaying.duration, 1.0)
+                                : 0.0
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(height: 3)
+                                Capsule()
+                                    .fill(Color.white.opacity(0.7))
+                                    .frame(width: geo.size.width * CGFloat(progress), height: 3)
+                            }
+                        }
+                        .frame(height: 3)
+
+                        HStack {
+                            Text(formatDuration(nowPlaying.elapsedTime))
+                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.45))
+                            Spacer()
+                            Text(formatDuration(nowPlaying.duration))
+                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.45))
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+
+                    // Playback controls
+                    HStack(spacing: 20) {
+                        Button(action: { nowPlaying.toggleShuffle() }) {
+                            Image(systemName: "shuffle")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(nowPlaying.shuffleOn ? .cyan : .white.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: { nowPlaying.previousTrack() }) {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: { nowPlaying.togglePlayPause() }) {
+                            Image(systemName: nowPlaying.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: { nowPlaying.nextTrack() }) {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: { nowPlaying.toggleRepeat() }) {
+                            Image(systemName: nowPlaying.repeatMode == 2 ? "repeat.1" : "repeat")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(nowPlaying.repeatMode > 0 ? .cyan : .white.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.bottom, 6)
                 }
-                .padding(14)
             }
 
+            // Lyrics section
             if !nowPlaying.timedLyrics.isEmpty {
                 TimedLyricsView(
                     lyrics: nowPlaying.timedLyrics,
@@ -98,18 +172,56 @@ struct NowPlayingOverlayView: View {
             } else if !nowPlaying.lyrics.isEmpty {
                 ScrollView(.vertical, showsIndicators: false) {
                     Text(nowPlaying.lyrics)
-                        .font(.system(size: 13, weight: .light))
+                        .font(.system(size: 12, weight: .light))
                         .foregroundColor(.white.opacity(0.65))
-                        .lineSpacing(7)
+                        .lineSpacing(6)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
+                        .padding(12)
                 }
-                .frame(maxHeight: 220)
+                .frame(maxHeight: 160)
+            }
+
+            // Next Up queue
+            if !nowPlaying.nextUp.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("NEXT UP")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white.opacity(0.35))
+                        .tracking(1)
+                        .padding(.horizontal, 4)
+
+                    ForEach(nowPlaying.nextUp) { track in
+                        HStack(spacing: 8) {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.25))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(track.title)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .lineLimit(1)
+                                Text(track.artist)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white.opacity(0.4))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                    }
+                }
+                .padding(.horizontal, 10)
             }
 
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        guard seconds.isFinite && seconds >= 0 else { return "0:00" }
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return "\(mins):\(String(format: "%02d", secs))"
     }
 }
 
@@ -160,8 +272,11 @@ struct TimedLyricsView: View {
 
 struct AppLauncherOverlayView: View {
     @ObservedObject var dockApps = DockAppsManager.shared
+    @ObservedObject var wallpaperManager = WallpaperManager.shared
 
     var body: some View {
+        let iconColor = DockAppsManager.adaptiveColor(for: wallpaperManager.currentWallpaper)
+
         GlassWidgetCard {
             VStack(spacing: 14) {
                 let columns = Array(repeating: GridItem(.fixed(76), spacing: 14), count: min(max(dockApps.apps.count, 1), 5))
@@ -170,15 +285,14 @@ struct AppLauncherOverlayView: View {
                     ForEach(dockApps.apps.prefix(15)) { app in
                         Button(action: { dockApps.launch(app) }) {
                             VStack(spacing: 5) {
-                                Image(nsImage: app.icon)
-                                    .resizable()
+                                Image(systemName: app.symbolName)
+                                    .font(.system(size: 28, weight: .light))
+                                    .foregroundColor(iconColor)
                                     .frame(width: 46, height: 46)
-                                    .cornerRadius(10)
-                                    .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
 
                                 Text(app.name)
                                     .font(.system(size: 10))
-                                    .foregroundColor(.white.opacity(0.75))
+                                    .foregroundColor(iconColor.opacity(0.75))
                                     .lineLimit(1)
                                     .frame(width: 66)
                             }

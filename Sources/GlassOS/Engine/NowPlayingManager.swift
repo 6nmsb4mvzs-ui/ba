@@ -7,6 +7,12 @@ struct TimedLyricLine: Identifiable {
     let text: String
 }
 
+struct NextUpTrack: Identifiable {
+    let id = UUID()
+    let title: String
+    let artist: String
+}
+
 class NowPlayingManager: ObservableObject {
     static let shared = NowPlayingManager()
 
@@ -19,6 +25,9 @@ class NowPlayingManager: ObservableObject {
     @Published var timedLyrics: [TimedLyricLine] = []
     @Published var elapsedTime: Double = 0
     @Published var duration: Double = 0
+    @Published var shuffleOn: Bool = false
+    @Published var repeatMode: Int = 0
+    @Published var nextUp: [NextUpTrack] = []
 
     private var timer: Timer?
     private var playbackTimer: Timer?
@@ -29,9 +38,11 @@ class NowPlayingManager: ObservableObject {
     private typealias MRInfoCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
     private typealias MRStateCallback = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
     private typealias MRRegisterNotifs = @convention(c) (DispatchQueue) -> Void
+    private typealias MRSendCommand = @convention(c) (UInt32, CFDictionary?) -> Bool
 
     private var _getNowPlayingInfo: MRInfoCallback?
     private var _getIsPlaying: MRStateCallback?
+    private var _sendCommand: MRSendCommand?
 
     private var titleKey = "kMRMediaRemoteNowPlayingInfoTitle"
     private var artistKey = "kMRMediaRemoteNowPlayingInfoArtist"
@@ -39,6 +50,8 @@ class NowPlayingManager: ObservableObject {
     private var artworkKey = "kMRMediaRemoteNowPlayingInfoArtworkData"
     private var elapsedTimeKey = "kMRMediaRemoteNowPlayingInfoElapsedTime"
     private var durationKey = "kMRMediaRemoteNowPlayingInfoDuration"
+    private var shuffleKey = "kMRMediaRemoteNowPlayingInfoShuffleMode"
+    private var repeatKey = "kMRMediaRemoteNowPlayingInfoRepeatMode"
 
     private init() {
         loadMediaRemote()
@@ -167,6 +180,12 @@ class NowPlayingManager: ObservableObject {
         loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoArtworkData", into: &artworkKey)
         loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoElapsedTime", into: &elapsedTimeKey)
         loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoDuration", into: &durationKey)
+        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoShuffleMode", into: &shuffleKey)
+        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoRepeatMode", into: &repeatKey)
+
+        if let ptr = dlsym(handle, "MRMediaRemoteSendCommand") {
+            _sendCommand = unsafeBitCast(ptr, to: MRSendCommand.self)
+        }
 
         if let ptr = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications") {
             let register = unsafeBitCast(ptr, to: MRRegisterNotifs.self)
@@ -218,10 +237,18 @@ class NowPlayingManager: ObservableObject {
                     self.duration = dur
                 }
 
+                if let shuf = info[self.shuffleKey] as? Int {
+                    self.shuffleOn = shuf != 0
+                }
+                if let rep = info[self.repeatKey] as? Int {
+                    self.repeatMode = rep
+                }
+
                 self.isPlaying = true
 
                 if titleChanged {
                     self.fetchLyrics()
+                    self.fetchNextUp()
                 } else if self.lyrics.isEmpty && !self.title.isEmpty {
                     self.fetchLyrics()
                 }
@@ -500,6 +527,85 @@ class NowPlayingManager: ObservableObject {
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self = self, self.isPlaying else { return }
             self.elapsedTime = self.elapsedTimeBase + Date().timeIntervalSince(self.elapsedTimestamp)
+        }
+    }
+
+    // MARK: - Playback Controls
+
+    func togglePlayPause() {
+        _ = _sendCommand?(2, nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.isPlaying.toggle()
+            self?.fetchNowPlaying()
+        }
+    }
+
+    func nextTrack() {
+        _ = _sendCommand?(4, nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.fetchNowPlaying()
+        }
+    }
+
+    func previousTrack() {
+        _ = _sendCommand?(5, nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.fetchNowPlaying()
+        }
+    }
+
+    func toggleShuffle() {
+        _ = _sendCommand?(6, nil)
+        shuffleOn.toggle()
+    }
+
+    func toggleRepeat() {
+        _ = _sendCommand?(7, nil)
+        repeatMode = (repeatMode + 1) % 3
+    }
+
+    // MARK: - Next Up Queue
+
+    func fetchNextUp() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let musicRunning = NSWorkspace.shared.runningApplications.contains {
+                $0.bundleIdentifier == "com.apple.Music"
+            }
+            guard musicRunning else {
+                DispatchQueue.main.async { self?.nextUp = [] }
+                return
+            }
+
+            let script = NSAppleScript(source: """
+            tell application "Music"
+                try
+                    set output to ""
+                    set idx to index of current track
+                    set pl to current playlist
+                    set totalTracks to count of tracks of pl
+                    set maxNext to idx + 5
+                    if maxNext > totalTracks then set maxNext to totalTracks
+                    repeat with i from (idx + 1) to maxNext
+                        set t to track i of pl
+                        set output to output & name of t & "||" & artist of t & "\\n"
+                    end repeat
+                    return output
+                end try
+            end tell
+            return ""
+            """)
+            var error: NSDictionary?
+            let result = script?.executeAndReturnError(&error)
+            let text = result?.stringValue ?? ""
+
+            var tracks: [NextUpTrack] = []
+            for line in text.components(separatedBy: "\n") where !line.isEmpty {
+                let parts = line.components(separatedBy: "||")
+                if parts.count >= 2 {
+                    tracks.append(NextUpTrack(title: parts[0], artist: parts[1]))
+                }
+            }
+            DispatchQueue.main.async { self?.nextUp = tracks }
         }
     }
 }

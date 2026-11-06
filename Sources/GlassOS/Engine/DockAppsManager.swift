@@ -1,10 +1,11 @@
 import AppKit
+import SwiftUI
 
 struct DockApp: Identifiable {
     let id: String
     let name: String
-    let icon: NSImage
-    let path: String
+    let symbolName: String
+    let bundleID: String
 }
 
 class DockAppsManager: ObservableObject {
@@ -12,65 +13,66 @@ class DockAppsManager: ObservableObject {
 
     @Published var apps: [DockApp] = []
 
+    private static let pinnedApps: [(String, String, String)] = [
+        ("Music",     "music.note",                   "com.apple.Music"),
+        ("Chrome",    "globe",                        "com.google.Chrome"),
+        ("Settings",  "gearshape",                    "com.apple.systempreferences"),
+        ("Discord",   "bubble.left.and.bubble.right", "com.hnc.Discord"),
+        ("Soundgrab", "waveform",                     "com.soundgrab.Soundgrab"),
+        ("PG3D",      "gamecontroller",               "com.pixel.gun3d"),
+        ("GlassOS",   "sparkles.rectangle.stack",     Bundle.main.bundleIdentifier ?? "com.glassos.app"),
+    ]
+
     private init() {
-        loadDockApps()
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self, selector: #selector(appsChanged),
-            name: NSWorkspace.didLaunchApplicationNotification, object: nil
-        )
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self, selector: #selector(appsChanged),
-            name: NSWorkspace.didTerminateApplicationNotification, object: nil
-        )
-    }
-
-    @objc private func appsChanged(_ notification: Notification) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.loadDockApps()
+        apps = Self.pinnedApps.map {
+            DockApp(id: $0.2, name: $0.0, symbolName: $0.1, bundleID: $0.2)
         }
-    }
-
-    func loadDockApps() {
-        var result: [DockApp] = []
-
-        let dockDefaults = UserDefaults(suiteName: "com.apple.dock")
-        if let persistentApps = dockDefaults?.array(forKey: "persistent-apps") as? [[String: Any]] {
-            for app in persistentApps {
-                guard let tileData = app["tile-data"] as? [String: Any],
-                      let fileData = tileData["file-data"] as? [String: Any],
-                      let urlString = fileData["_CFURLString"] as? String else { continue }
-
-                var path = urlString.removingPercentEncoding ?? urlString
-                if path.hasPrefix("file://") { path = String(path.dropFirst(7)) }
-                if path.hasSuffix("/") { path = String(path.dropLast()) }
-
-                guard FileManager.default.fileExists(atPath: path) else { continue }
-
-                let name = tileData["file-label"] as? String ??
-                    (path as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: "")
-                let icon = NSWorkspace.shared.icon(forFile: path)
-                icon.size = NSSize(width: 64, height: 64)
-                result.append(DockApp(id: path, name: name, icon: icon, path: path))
-            }
-        }
-
-        if result.isEmpty {
-            result = NSWorkspace.shared.runningApplications
-                .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }
-                .compactMap { app -> DockApp? in
-                    guard let name = app.localizedName, let url = app.bundleURL else { return nil }
-                    let icon = app.icon ?? NSImage(systemSymbolName: "app.fill", accessibilityDescription: nil) ?? NSImage()
-                    icon.size = NSSize(width: 64, height: 64)
-                    return DockApp(id: url.path, name: name, icon: icon, path: url.path)
-                }
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        }
-
-        apps = result
     }
 
     func launch(_ app: DockApp) {
-        let url = URL(fileURLWithPath: app.path)
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
+            NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, _ in }
+            return
+        }
+        for dir in ["/Applications", NSHomeDirectory() + "/Applications"] {
+            let path = "\(dir)/\(app.name).app"
+            if FileManager.default.fileExists(atPath: path) {
+                NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init()) { _, _ in }
+                return
+            }
+        }
+    }
+
+    static func adaptiveColor(for wallpaper: WallpaperItem?) -> Color {
+        guard let colors = wallpaper?.gradientColors, let first = colors.first else {
+            return .white.opacity(0.7)
+        }
+        let (r, g, b) = hexToRGB(first)
+        let brightness = 0.299 * r + 0.587 * g + 0.114 * b
+
+        let maxC = max(r, g, b), minC = min(r, g, b), delta = maxC - minC
+        var hue: Double = 0
+        if delta > 0.001 {
+            if maxC == r { hue = ((g - b) / delta).truncatingRemainder(dividingBy: 6) }
+            else if maxC == g { hue = (b - r) / delta + 2 }
+            else { hue = (r - g) / delta + 4 }
+            hue /= 6; if hue < 0 { hue += 1 }
+        }
+        let sat = maxC > 0 ? delta / maxC : 0
+
+        if brightness < 0.3 {
+            return Color(hue: hue, saturation: min(sat * 0.6, 0.35), brightness: 0.85)
+        } else {
+            return Color(hue: hue, saturation: min(sat * 0.8, 0.5), brightness: 0.2)
+        }
+    }
+
+    private static func hexToRGB(_ hex: String) -> (Double, Double, Double) {
+        let h = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        var int: UInt64 = 0
+        Scanner(string: h).scanHexInt64(&int)
+        return (Double((int >> 16) & 0xFF) / 255.0,
+                Double((int >> 8) & 0xFF) / 255.0,
+                Double(int & 0xFF) / 255.0)
     }
 }
