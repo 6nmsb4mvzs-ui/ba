@@ -1,76 +1,25 @@
 import SwiftUI
 
-struct DesktopOverlayView: View {
-    @ObservedObject var nowPlaying = NowPlayingManager.shared
-    @ObservedObject var dockApps = DockAppsManager.shared
-    @ObservedObject var wallpaperManager = WallpaperManager.shared
-    @ObservedObject var imageCache = ImageCache.shared
+// MARK: - Clock Widget (non-interactive, displayed in its own panel)
+
+struct ClockOverlayView: View {
     @ObservedObject var fontManager = FontManager.shared
     @State private var currentTime = Date()
-    @State private var carouselIndex: Int = 0
-    @State private var carouselDragOffset: CGFloat = 0
-
     let clockTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .allowsHitTesting(false)
-
-                // Clock + Date — top center
-                VStack {
-                    clockSection
-                        .padding(.top, 36)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-                .allowsHitTesting(false)
-
-                // Left column: Now Playing + Lyrics
-                VStack(alignment: .leading, spacing: 14) {
-                    nowPlayingSection
-                    if !nowPlaying.lyrics.isEmpty {
-                        lyricsSection
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(width: 280, alignment: .leading)
-                .padding(.leading, 32)
-                .padding(.top, 120)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                // Center: App launcher
-                appLauncherSection
-                    .frame(maxWidth: 500)
-                    .position(x: geo.size.width * 0.5, y: geo.size.height * 0.5)
-
-                // Right: Vertical wallpaper carousel
-                verticalWallpaperCarousel(height: geo.size.height)
-                    .frame(width: 220, height: min(geo.size.height - 80, 650))
-                    .padding(.trailing, 24)
-                    .padding(.top, 40)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-        }
-        .onReceive(clockTimer) { currentTime = $0 }
-    }
-
-    // MARK: - Clock
-
-    private var clockSection: some View {
         VStack(spacing: 4) {
             Text(formatTime())
                 .font(fontManager.clockFont())
                 .foregroundColor(.white)
                 .shadow(color: .black.opacity(0.6), radius: 10, x: 0, y: 3)
-
             Text(formatDate())
                 .font(fontManager.dateFont())
                 .foregroundColor(.white.opacity(0.8))
                 .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onReceive(clockTimer) { currentTime = $0 }
     }
 
     private func formatTime() -> String {
@@ -84,78 +33,89 @@ struct DesktopOverlayView: View {
         f.dateFormat = "EEEE, d MMMM"
         return f.string(from: currentTime)
     }
+}
 
-    // MARK: - Now Playing
+// MARK: - Now Playing Widget
 
-    private var nowPlayingSection: some View {
-        GlassWidgetCard {
-            HStack(spacing: 12) {
-                if let art = nowPlaying.artwork {
-                    Image(nsImage: art)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 80, height: 80)
-                        .cornerRadius(10)
-                        .clipped()
-                } else {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(LinearGradient(colors: [.cyan.opacity(0.15), .blue.opacity(0.15)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 80, height: 80)
-                        .overlay(
-                            Image(systemName: "music.note")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white.opacity(0.25))
-                        )
-                }
+struct NowPlayingOverlayView: View {
+    @ObservedObject var nowPlaying = NowPlayingManager.shared
 
-                VStack(alignment: .leading, spacing: 4) {
-                    if !nowPlaying.title.isEmpty {
-                        Text(nowPlaying.title)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                        Text(nowPlaying.artist)
-                            .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.55))
-                            .lineLimit(1)
-                        if !nowPlaying.album.isEmpty {
-                            Text(nowPlaying.album)
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.35))
-                                .lineLimit(1)
-                        }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GlassWidgetCard {
+                HStack(spacing: 12) {
+                    if let art = nowPlaying.artwork {
+                        Image(nsImage: art)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 80, height: 80)
+                            .cornerRadius(10)
+                            .clipped()
                     } else {
-                        Text("Not Playing")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.35))
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(LinearGradient(colors: [.cyan.opacity(0.15), .blue.opacity(0.15)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 80, height: 80)
+                            .overlay(
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.white.opacity(0.25))
+                            )
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(14)
-        }
-    }
 
-    // MARK: - Lyrics
-
-    private var lyricsSection: some View {
-        GlassWidgetCard {
-            ScrollView(.vertical, showsIndicators: false) {
-                Text(nowPlaying.lyrics)
-                    .font(.system(size: 13, weight: .light))
-                    .foregroundColor(.white.opacity(0.65))
-                    .lineSpacing(7)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !nowPlaying.title.isEmpty {
+                            Text(nowPlaying.title)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                                .lineLimit(2)
+                            Text(nowPlaying.artist)
+                                .font(.system(size: 12))
+                                .foregroundColor(.white.opacity(0.55))
+                                .lineLimit(1)
+                            if !nowPlaying.album.isEmpty {
+                                Text(nowPlaying.album)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.35))
+                                    .lineLimit(1)
+                            }
+                        } else {
+                            Text("Not Playing")
+                                .font(.system(size: 13))
+                                .foregroundColor(.white.opacity(0.35))
+                        }
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
+                }
+                .padding(14)
             }
-            .frame(maxHeight: 220)
+
+            if !nowPlaying.lyrics.isEmpty {
+                GlassWidgetCard {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        Text(nowPlaying.lyrics)
+                            .font(.system(size: 13, weight: .light))
+                            .foregroundColor(.white.opacity(0.65))
+                            .lineSpacing(7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .frame(maxHeight: 220)
+                }
+            }
+
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
+}
 
-    // MARK: - App Launcher
+// MARK: - App Launcher Widget
 
-    private var appLauncherSection: some View {
+struct AppLauncherOverlayView: View {
+    @ObservedObject var dockApps = DockAppsManager.shared
+
+    var body: some View {
         GlassWidgetCard {
             VStack(spacing: 14) {
                 HStack {
@@ -167,7 +127,7 @@ struct DesktopOverlayView: View {
                     Spacer()
                 }
 
-                let columns = Array(repeating: GridItem(.fixed(76), spacing: 14), count: min(dockApps.apps.count, 5))
+                let columns = Array(repeating: GridItem(.fixed(76), spacing: 14), count: min(max(dockApps.apps.count, 1), 5))
 
                 LazyVGrid(columns: columns, spacing: 18) {
                     ForEach(dockApps.apps.prefix(15)) { app in
@@ -192,11 +152,19 @@ struct DesktopOverlayView: View {
             }
             .padding(18)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
-    // MARK: - Vertical 3D Wallpaper Carousel
+// MARK: - Wallpaper Carousel Widget
 
-    private func verticalWallpaperCarousel(height: CGFloat) -> some View {
+struct WallpaperCarouselOverlayView: View {
+    @ObservedObject var wallpaperManager = WallpaperManager.shared
+    @ObservedObject var imageCache = ImageCache.shared
+    @State private var carouselIndex: Int = 0
+    @State private var carouselDragOffset: CGFloat = 0
+
+    var body: some View {
         GlassWidgetCard {
             VStack(spacing: 8) {
                 HStack {
@@ -267,6 +235,7 @@ struct DesktopOverlayView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func wallpaperCarouselCard(_ wp: WallpaperItem, width: CGFloat, height: CGFloat) -> some View {
@@ -338,15 +307,9 @@ struct GlassWidgetCard<Content: View>: View {
     }
 }
 
-// MARK: - Click-Through Hosting View
+// MARK: - Accepting-First-Mouse Hosting View
 
-class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let result = super.hitTest(point)
-        if result === self { return nil }
-        return result
-    }
-
+class WidgetHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         return true
     }

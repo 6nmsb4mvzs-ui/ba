@@ -16,11 +16,9 @@ class NowPlayingManager: ObservableObject {
 
     private typealias MRInfoCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
     private typealias MRStateCallback = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
-    private typealias MRRegisterCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
 
     private var _getNowPlayingInfo: MRInfoCallback?
     private var _getIsPlaying: MRStateCallback?
-    private var _registerForNowPlayingNotifications: MRRegisterCallback?
 
     private init() {
         loadMediaRemote()
@@ -101,60 +99,75 @@ class NowPlayingManager: ObservableObject {
 
     private func fetchNowPlayingViaAppleScript() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let script = NSAppleScript(source: """
+            // Try Music.app
+            let musicScript = NSAppleScript(source: """
             tell application "System Events"
-                set musicRunning to (exists (processes where name is "Music"))
-                set spotifyRunning to (exists (processes where name is "Spotify"))
+                if not (exists (processes where name is "Music")) then return ""
             end tell
-
-            if musicRunning then
-                tell application "Music"
-                    try
-                        if player state is playing or player state is paused then
-                            set trackName to name of current track
-                            set trackArtist to artist of current track
-                            set trackAlbum to album of current track
-                            set playState to "1"
-                            if player state is paused then set playState to "0"
-                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
-                        end if
-                    end try
-                end tell
-            end if
-
-            if spotifyRunning then
-                tell application "Spotify"
-                    try
-                        if player state is playing or player state is paused then
-                            set trackName to name of current track
-                            set trackArtist to artist of current track
-                            set trackAlbum to album of current track
-                            set playState to "1"
-                            if player state is paused then set playState to "0"
-                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
-                        end if
-                    end try
-                end tell
-            end if
+            tell application "Music"
+                try
+                    if player state is playing or player state is paused then
+                        set trackName to name of current track
+                        set trackArtist to artist of current track
+                        set trackAlbum to album of current track
+                        set playState to "1"
+                        if player state is paused then set playState to "0"
+                        return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
+                    end if
+                end try
+            end tell
             return ""
             """)
             var error: NSDictionary?
-            let result = script?.executeAndReturnError(&error)
+            let result = musicScript?.executeAndReturnError(&error)
             let text = result?.stringValue ?? ""
+
             if !text.isEmpty {
-                let parts = text.components(separatedBy: "||")
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    let newTitle = parts.count > 0 ? parts[0] : ""
-                    let titleChanged = newTitle != self.title
-                    self.title = newTitle
-                    self.artist = parts.count > 1 ? parts[1] : ""
-                    self.album = parts.count > 2 ? parts[2] : ""
-                    self.isPlaying = parts.count > 3 ? parts[3] == "1" : false
-                    if titleChanged && !newTitle.isEmpty {
-                        self.fetchLyrics()
-                    }
-                }
+                self?.parseNowPlayingResult(text)
+                return
+            }
+
+            // Only try Spotify if it is actually running (avoids "find application" dialog)
+            let spotifyRunning = NSWorkspace.shared.runningApplications.contains {
+                $0.bundleIdentifier == "com.spotify.client"
+            }
+            guard spotifyRunning else { return }
+
+            let spotifyScript = NSAppleScript(source: """
+            tell application "Spotify"
+                try
+                    if player state is playing or player state is paused then
+                        set trackName to name of current track
+                        set trackArtist to artist of current track
+                        set trackAlbum to album of current track
+                        set playState to "1"
+                        if player state is paused then set playState to "0"
+                        return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState
+                    end if
+                end try
+            end tell
+            return ""
+            """)
+            let spotResult = spotifyScript?.executeAndReturnError(&error)
+            let spotText = spotResult?.stringValue ?? ""
+            if !spotText.isEmpty {
+                self?.parseNowPlayingResult(spotText)
+            }
+        }
+    }
+
+    private func parseNowPlayingResult(_ text: String) {
+        let parts = text.components(separatedBy: "||")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let newTitle = parts.count > 0 ? parts[0] : ""
+            let titleChanged = newTitle != self.title
+            self.title = newTitle
+            self.artist = parts.count > 1 ? parts[1] : ""
+            self.album = parts.count > 2 ? parts[2] : ""
+            self.isPlaying = parts.count > 3 ? parts[3] == "1" : false
+            if titleChanged && !newTitle.isEmpty {
+                self.fetchLyrics()
             }
         }
     }

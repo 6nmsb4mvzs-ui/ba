@@ -3,12 +3,16 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var mainWindow: NSWindow?
-    var desktopWindow: NSWindow?
     var statusItem: NSStatusItem?
     var wallpaperEngine: WallpaperEngine?
     var hotkeyManager: GlobalHotkeyManager?
     var navigatorPanel: NSPanel?
     var desktopOverlayVisible = true
+
+    var clockPanel: NSPanel?
+    var nowPlayingPanel: NSPanel?
+    var appLauncherPanel: NSPanel?
+    var wallpaperPanel: NSPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
@@ -100,16 +104,62 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainWindow?.makeKeyAndOrderFront(nil)
     }
 
+    // MARK: - Desktop Overlay (separate panels per widget)
+
     private func setupDesktopOverlay() {
         guard let screen = NSScreen.main else { return }
+        let sf = screen.frame
 
+        let widgetLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.normalWindow)) - 1)
+
+        // Clock — top center, non-interactive
+        clockPanel = makeOverlayPanel(
+            frame: NSRect(x: sf.midX - 220, y: sf.maxY - 130, width: 440, height: 110),
+            level: widgetLevel
+        )
+        clockPanel?.ignoresMouseEvents = true
+        clockPanel?.contentView = NSHostingView(rootView: ClockOverlayView())
+        clockPanel?.orderFront(nil)
+
+        // Now Playing — top left, interactive
+        nowPlayingPanel = makeOverlayPanel(
+            frame: NSRect(x: sf.minX + 24, y: sf.maxY - 520, width: 310, height: 400),
+            level: widgetLevel
+        )
+        nowPlayingPanel?.contentView = WidgetHostingView(rootView: NowPlayingOverlayView())
+        nowPlayingPanel?.orderFront(nil)
+
+        // App Launcher — center, interactive
+        appLauncherPanel = makeOverlayPanel(
+            frame: NSRect(x: sf.midX - 265, y: sf.midY - 200, width: 530, height: 400),
+            level: widgetLevel
+        )
+        appLauncherPanel?.contentView = WidgetHostingView(rootView: AppLauncherOverlayView())
+        appLauncherPanel?.orderFront(nil)
+
+        // Wallpaper Carousel — right side, interactive
+        let wpHeight = min(sf.height - 80, 620)
+        wallpaperPanel = makeOverlayPanel(
+            frame: NSRect(x: sf.maxX - 260, y: sf.midY - wpHeight / 2, width: 240, height: wpHeight),
+            level: widgetLevel
+        )
+        wallpaperPanel?.contentView = WidgetHostingView(rootView: WallpaperCarouselOverlayView())
+        wallpaperPanel?.orderFront(nil)
+
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            self?.repositionOverlayPanels()
+        }
+    }
+
+    private func makeOverlayPanel(frame: NSRect, level: NSWindow.Level) -> NSPanel {
         let panel = OverlayPanel(
-            contentRect: screen.frame,
+            contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.normalWindow)) - 1)
+        panel.level = level
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -117,56 +167,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.acceptsMouseMovedEvents = true
-        panel.becomesKeyOnlyIfNeeded = true
-
-        let overlayView = DesktopOverlayView()
-        let hostingView = ClickThroughHostingView(rootView: overlayView)
-        panel.contentView = hostingView
-
-        panel.orderFront(nil)
-        desktopWindow = panel
-
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self, selector: #selector(workspaceAppActivated(_:)),
-            name: NSWorkspace.didActivateApplicationNotification, object: nil
-        )
-
-        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
-                                               object: nil, queue: .main) { [weak self] _ in
-            if let screen = NSScreen.main {
-                self?.desktopWindow?.setFrame(screen.frame, display: true)
-            }
-        }
+        return panel
     }
 
-    @objc private func workspaceAppActivated(_ notification: Notification) {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-        if app.bundleIdentifier == Bundle.main.bundleIdentifier { return }
-        if app.bundleIdentifier == "com.apple.finder" {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25
-                desktopWindow?.animator().alphaValue = 1.0
-            }
-        } else {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
-                desktopWindow?.animator().alphaValue = 0.0
-            }
-        }
+    private func repositionOverlayPanels() {
+        guard let screen = NSScreen.main else { return }
+        let sf = screen.frame
+        clockPanel?.setFrame(NSRect(x: sf.midX - 220, y: sf.maxY - 130, width: 440, height: 110), display: true)
+        nowPlayingPanel?.setFrame(NSRect(x: sf.minX + 24, y: sf.maxY - 520, width: 310, height: 400), display: true)
+        appLauncherPanel?.setFrame(NSRect(x: sf.midX - 265, y: sf.midY - 200, width: 530, height: 400), display: true)
+        let wpHeight = min(sf.height - 80, 620)
+        wallpaperPanel?.setFrame(NSRect(x: sf.maxX - 260, y: sf.midY - wpHeight / 2, width: 240, height: wpHeight), display: true)
+    }
+
+    private var allOverlayPanels: [NSPanel?] {
+        [clockPanel, nowPlayingPanel, appLauncherPanel, wallpaperPanel]
     }
 
     @objc func toggleDesktopOverlay() {
         if desktopOverlayVisible {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
-                desktopWindow?.animator().alphaValue = 0.0
-            }
+            allOverlayPanels.forEach { $0?.orderOut(nil) }
         } else {
-            desktopWindow?.orderFront(nil)
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25
-                desktopWindow?.animator().alphaValue = 1.0
-            }
+            allOverlayPanels.forEach { $0?.orderFront(nil) }
         }
         desktopOverlayVisible.toggle()
     }
