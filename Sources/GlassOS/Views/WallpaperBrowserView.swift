@@ -7,6 +7,8 @@ struct WallpaperBrowserView: View {
     @State private var selectedWallpaper: WallpaperItem?
     @State private var showCarousel = true
     @State private var currentIndex: Int = 0
+    @State private var dragOffset: CGFloat = 0
+    @State private var keyMonitor: Any?
 
     var body: some View {
         ZStack {
@@ -20,6 +22,7 @@ struct WallpaperBrowserView: View {
                 if showCarousel {
                     carouselView
                         .frame(maxHeight: .infinity)
+                        .clipped()
                 } else {
                     gridView
                         .frame(maxHeight: .infinity)
@@ -28,6 +31,42 @@ struct WallpaperBrowserView: View {
                 bottomBar
                     .padding(.horizontal, 24)
                     .padding(.bottom, 16)
+                    .zIndex(10)
+            }
+        }
+        .onAppear {
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                if showCarousel {
+                    let wallpapers = wallpaperManager.wallpapers
+                    switch event.keyCode {
+                    case 123: // left arrow
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            currentIndex = max(0, currentIndex - 1)
+                            selectedWallpaper = wallpapers[currentIndex]
+                        }
+                        return nil
+                    case 124: // right arrow
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            currentIndex = min(wallpapers.count - 1, currentIndex + 1)
+                            selectedWallpaper = wallpapers[currentIndex]
+                        }
+                        return nil
+                    case 36: // return — apply selected
+                        if let sel = selectedWallpaper {
+                            wallpaperManager.applyWallpaper(sel)
+                        }
+                        return nil
+                    default:
+                        break
+                    }
+                }
+                return event
+            }
+        }
+        .onDisappear {
+            if let m = keyMonitor {
+                NSEvent.removeMonitor(m)
+                keyMonitor = nil
             }
         }
     }
@@ -64,18 +103,18 @@ struct WallpaperBrowserView: View {
             let cardHeight: CGFloat = cardWidth * 1.6
             let centerX = geometry.size.width / 2
             let wallpapers = wallpaperManager.wallpapers
+            let spacing: CGFloat = cardWidth * 0.65
+            let dragIndexOffset = dragOffset / spacing
 
             ZStack {
                 ForEach(Array(wallpapers.enumerated()), id: \.element.id) { index, wallpaper in
-                    let offset = CGFloat(index - currentIndex)
-                    let spacing: CGFloat = cardWidth * 0.65
-                    let xPos = centerX + (offset * spacing)
-                    let distFromCenter = abs(xPos - centerX)
-                    let maxDist = geometry.size.width / 2
-                    let normalizedDist = min(distFromCenter / maxDist, 1.0)
+                    let floatIndex = CGFloat(index) - CGFloat(currentIndex) + dragIndexOffset
+                    let xPos = centerX + (floatIndex * spacing)
+                    let distFromCenter = abs(floatIndex)
+                    let normalizedDist = min(distFromCenter / (geometry.size.width / (2 * spacing)), 1.0)
                     let scale = 1.0 - (normalizedDist * 0.35)
-                    let zIndex = 100.0 - Double(abs(index - currentIndex))
-                    let rotation = -normalizedDist * 25 * (xPos < centerX ? -1 : 1)
+                    let zIndex = 100.0 - Double(distFromCenter)
+                    let rotation = -min(normalizedDist, 1.0) * 25 * (floatIndex < 0 ? -1 : 1)
                     let cardOpacity = max(0.3, 1.0 - normalizedDist * 0.7)
 
                     WallpaperCarouselCard(
@@ -85,14 +124,6 @@ struct WallpaperBrowserView: View {
                         height: cardHeight,
                         cachedImage: imageCache.image(for: wallpaper)
                     )
-                    .onHover { hovering in
-                        if hovering {
-                            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                                currentIndex = index
-                                selectedWallpaper = wallpaper
-                            }
-                        }
-                    }
                     .scaleEffect(scale)
                     .rotation3DEffect(
                         .degrees(rotation),
@@ -104,14 +135,38 @@ struct WallpaperBrowserView: View {
                     .zIndex(zIndex)
                     .onTapGesture {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            if selectedWallpaper?.id == wallpaper.id {
-                                wallpaperManager.applyWallpaper(wallpaper)
-                            } else {
-                                selectedWallpaper = wallpaper
-                                currentIndex = index
-                            }
+                            selectedWallpaper = wallpaper
+                            currentIndex = index
                         }
                     }
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        dragOffset = value.translation.width
+                    }
+                    .onEnded { value in
+                        let cardsMoved = Int(round(-value.translation.width / spacing))
+                        let predicted = Int(round(-value.predictedEndTranslation.width / spacing))
+                        let move = abs(predicted) > abs(cardsMoved) ? predicted : cardsMoved
+                        let newIndex = max(0, min(wallpapers.count - 1, currentIndex + move))
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            currentIndex = newIndex
+                            selectedWallpaper = wallpapers[newIndex]
+                            dragOffset = 0
+                        }
+                    }
+            )
+            .onContinuousHover { phase in
+                switch phase {
+                case .active:
+                    break
+                case .ended:
+                    break
+                @unknown default:
+                    break
                 }
             }
         }
@@ -181,12 +236,33 @@ struct WallpaperBrowserView: View {
                 .padding(16)
                 .background(GlassBackground(cornerRadius: 12))
             } else {
-                Text("Hover over wallpapers to browse, click to select")
-                    .font(.body)
-                    .foregroundColor(.white.opacity(0.4))
-                    .frame(maxWidth: .infinity)
-                    .padding(16)
+                HStack(spacing: 24) {
+                    KeyHintSmall(key: "←→", label: "Navigate")
+                    KeyHintSmall(key: "Drag", label: "Scroll")
+                    KeyHintSmall(key: "Click", label: "Select")
+                    KeyHintSmall(key: "↵", label: "Apply")
+                }
+                .frame(maxWidth: .infinity)
+                .padding(16)
             }
+        }
+    }
+}
+
+struct KeyHintSmall: View {
+    let key: String
+    let label: String
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(key)
+                .font(.caption2.monospaced().bold())
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 3).fill(Color.white.opacity(0.1)))
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.4))
         }
     }
 }
