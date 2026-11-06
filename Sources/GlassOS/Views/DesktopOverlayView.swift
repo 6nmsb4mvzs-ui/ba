@@ -272,6 +272,7 @@ struct WallpaperCarouselOverlayView: View {
                                 scrollAccumulator = 0
                             }
                         }
+                        .allowsHitTesting(false)
                     )
                 }
             }
@@ -353,10 +354,35 @@ struct ScrollWheelView: NSViewRepresentable {
 
 class ScrollWheelNSView: NSView {
     var onScroll: ((CGFloat) -> Void)?
+    private var monitor: Any?
 
-    override func scrollWheel(with event: NSEvent) {
-        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 10
-        onScroll?(delta)
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil, monitor == nil {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self = self, let window = self.window,
+                      event.window === window else { return event }
+                let loc = self.convert(event.locationInWindow, from: nil)
+                if self.bounds.contains(loc) {
+                    let delta = event.hasPreciseScrollingDeltas
+                        ? event.scrollingDeltaY
+                        : event.scrollingDeltaY * 10
+                    self.onScroll?(delta)
+                }
+                return event
+            }
+        }
+    }
+
+    override func removeFromSuperview() {
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        super.removeFromSuperview()
+    }
+
+    deinit {
+        if let m = monitor { NSEvent.removeMonitor(m) }
     }
 }
 
