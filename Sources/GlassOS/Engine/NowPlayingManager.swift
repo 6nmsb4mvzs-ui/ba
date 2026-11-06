@@ -212,6 +212,12 @@ class NowPlayingManager: ObservableObject {
 
                 if titleChanged {
                     self.fetchLyrics()
+                    self.fetchArtwork()
+                } else if self.artwork == nil && !self.title.isEmpty {
+                    self.fetchArtwork()
+                }
+                if self.lyrics.isEmpty && !self.title.isEmpty {
+                    self.fetchLyrics()
                 }
             }
         } else {
@@ -223,15 +229,59 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    // MARK: - Artwork via MediaRemote
+    // MARK: - Artwork
 
     private func fetchArtwork() {
-        guard let getNowPlayingInfo = _getNowPlayingInfo else { return }
-        getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
-            guard let self = self else { return }
-            if let data = info[self.artworkKey] as? Data,
-               let img = NSImage(data: data) {
-                self.artwork = img
+        if let getNowPlayingInfo = _getNowPlayingInfo {
+            getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
+                guard let self = self else { return }
+                if let data = info[self.artworkKey] as? Data,
+                   let img = NSImage(data: data) {
+                    self.artwork = img
+                } else {
+                    self.fetchArtworkViaAppleScript()
+                }
+            }
+        } else {
+            fetchArtworkViaAppleScript()
+        }
+    }
+
+    private func fetchArtworkViaAppleScript() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let musicRunning = NSWorkspace.shared.runningApplications.contains {
+                $0.bundleIdentifier == "com.apple.Music"
+            }
+            guard musicRunning else { return }
+
+            let tmpPath = NSTemporaryDirectory() + "glassos_artwork.dat"
+            let script = NSAppleScript(source: """
+            tell application "Music"
+                try
+                    if player state is playing or player state is paused then
+                        set artworks to artworks of current track
+                        if (count of artworks) > 0 then
+                            set artData to raw data of artwork 1 of current track
+                            set tmpFile to POSIX file "\(tmpPath)"
+                            set fileRef to open for access tmpFile with write permission
+                            set eof fileRef to 0
+                            write artData to fileRef
+                            close access fileRef
+                            return "\(tmpPath)"
+                        end if
+                    end if
+                end try
+            end tell
+            return ""
+            """)
+            var error: NSDictionary?
+            let result = script?.executeAndReturnError(&error)
+            let path = result?.stringValue ?? ""
+
+            if !path.isEmpty, let img = NSImage(contentsOfFile: path) {
+                DispatchQueue.main.async {
+                    self?.artwork = img
+                }
             }
         }
     }
