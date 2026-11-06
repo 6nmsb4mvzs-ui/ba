@@ -24,7 +24,7 @@ class GlassWindow: NSWindow {
 
         let darkBg = NSView(frame: container.bounds)
         darkBg.wantsLayer = true
-        darkBg.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1.0).cgColor
+        darkBg.layer?.backgroundColor = NSColor(white: 0.05, alpha: 0.6).cgColor
         darkBg.autoresizingMask = [.width, .height]
         container.addSubview(darkBg)
 
@@ -32,7 +32,7 @@ class GlassWindow: NSWindow {
         glass.blendingMode = .behindWindow
         glass.state = .active
         glass.material = .fullScreenUI
-        glass.alphaValue = 0.30
+        glass.alphaValue = 0.20
         glass.autoresizingMask = [.width, .height]
         container.addSubview(glass)
 
