@@ -135,6 +135,7 @@ class WallpaperManager: ObservableObject {
         items.append(wh("k8jvm7", "Neural Grid",       "jpg", ["#1a1a2a", "#4a4a6a"]))
         items.append(wh("ey7prw", "Stargazer",         "jpg", ["#0a0a1e", "#1a2a5e"]))
         items.append(wh("p8gp83", "Celestial Path",    "jpg", ["#1a0a2e", "#3a2a6e"]))
+        items.append(wh("7jmgey", "Digital Genesis",   "png", ["#0a0508", "#3a1a4a"]))
         items.append(wh("yqwx17", "Vice City",         "jpg", ["#1a0a2a", "#5a1a6a"]))
         items.append(wh("jxjm1m", "Synthwave",         "png", ["#1a0033", "#e91e63"]))
         items.append(wh("yqkrv7", "Crimson Knight",    "png", ["#1a0505", "#5a1a1a"]))
@@ -145,6 +146,7 @@ class WallpaperManager: ObservableObject {
         items.append(wh("po5o9m", "Dusk Garden",       "jpg", ["#2a1a1a", "#5a3a2a"]))
         items.append(wh("gp3593", "Afterglow",         "jpg", ["#2a1a0a", "#6a3a1a"]))
         items.append(wh("mloml9", "Sky Armada",        "jpg", ["#3a3a3a", "#6a5a4a"]))
+        items.append(wh("jel73p", "Silver Tide",       "png", ["#3a3a4a", "#8a8a9a"]))
         items.append(wh("yqw88g", "Pastel Peaks",      "jpg", ["#3a3a4a", "#8a6a7a"]))
 
         // Scan for user-added local wallpapers in Custom subfolder
