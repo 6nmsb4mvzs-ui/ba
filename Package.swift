@@ -8,9 +8,6 @@ let package = Package(
         .executableTarget(
             name: "GlassOS",
             path: "Sources/GlassOS",
-            resources: [
-                .copy("../../Resources/Info.plist")
-            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
@@ -18,7 +15,7 @@ let package = Package(
                 .linkedFramework("AVKit"),
                 .linkedFramework("CoreGraphics"),
                 .linkedFramework("Carbon"),
-                .linkedFramework("ScreenCaptureKit"),
+                .linkedFramework("QuartzCore"),
             ]
         )
     ]

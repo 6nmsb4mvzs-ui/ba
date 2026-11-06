@@ -17,7 +17,7 @@ class WallpaperEngine {
     }
 
     func applyVideoWallpaper(url: URL, to screen: NSScreen? = nil) {
-        let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
+        let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens[0]
         removeWallpaper(from: targetScreen)
 
         let window = NSWindow(
@@ -63,18 +63,22 @@ class WallpaperEngine {
     }
 
     func applyStaticWallpaper(url: URL, to screen: NSScreen? = nil) {
-        let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
+        let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens[0]
         removeWallpaper(from: targetScreen)
 
         do {
-            try NSWorkspace.shared.setDesktopImageURL(url, for: targetScreen)
+            try NSWorkspace.shared.setDesktopImageURL(
+                url,
+                for: targetScreen,
+                options: [:]
+            )
         } catch {
             print("Failed to set wallpaper: \(error)")
         }
     }
 
     func applyColorWallpaper(colors: [NSColor], to screen: NSScreen? = nil) {
-        let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
+        let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens[0]
         removeWallpaper(from: targetScreen)
 
         let window = NSWindow(

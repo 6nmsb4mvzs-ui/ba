@@ -7,6 +7,7 @@ struct WindowNavigatorView: View {
     @State private var selectedIndex: Int = 0
     @State private var searchText = ""
     @State private var isVisible = false
+    @State private var keyMonitor: Any?
 
     var filteredWindows: [WindowInfo] {
         if searchText.isEmpty { return windows }
@@ -20,7 +21,7 @@ struct WindowNavigatorView: View {
         ZStack {
             Color.black.opacity(isVisible ? 0.5 : 0)
                 .ignoresSafeArea()
-                .onTapGesture { dismiss() }
+                .onTapGesture { dismissView() }
 
             VStack(spacing: 20) {
                 HStack(spacing: 12) {
@@ -48,14 +49,14 @@ struct WindowNavigatorView: View {
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 16) {
-                            ForEach(Array(filteredWindows.enumerated()), id: \.element.id) { index, window in
+                            ForEach(Array(filteredWindows.enumerated()), id: \.element.id) { index, windowItem in
                                 WindowCard(
-                                    window: window,
+                                    windowItem: windowItem,
                                     isSelected: index == selectedIndex
                                 )
                                 .onTapGesture {
-                                    focusWindow(window)
-                                    dismiss()
+                                    focusWindow(windowItem)
+                                    dismissView()
                                 }
                             }
                         }
@@ -65,9 +66,9 @@ struct WindowNavigatorView: View {
                 }
 
                 HStack(spacing: 24) {
-                    KeyHint(key: "←→", description: "Navigate")
-                    KeyHint(key: "↵", description: "Switch")
-                    KeyHint(key: "ESC", description: "Close")
+                    KeyHint(key: "←→", label: "Navigate")
+                    KeyHint(key: "↵", label: "Switch")
+                    KeyHint(key: "ESC", label: "Close")
                 }
                 .padding(.top, 8)
             }
@@ -79,69 +80,87 @@ struct WindowNavigatorView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 isVisible = true
             }
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                handleKeyEvent(event)
-                return nil
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                return self.handleKeyEvent(event)
+            }
+        }
+        .onDisappear {
+            if let m = keyMonitor {
+                NSEvent.removeMonitor(m)
+                keyMonitor = nil
             }
         }
     }
 
     private func loadWindows() {
-        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+        guard let windowList = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
             return
         }
 
         windows = windowList.compactMap { info -> WindowInfo? in
             guard let windowID = info[kCGWindowNumber as String] as? CGWindowID,
                   let ownerName = info[kCGWindowOwnerName as String] as? String,
-                  let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+                  let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
                   let layer = info[kCGWindowLayer as String] as? Int,
                   layer == 0
             else { return nil }
 
             let name = info[kCGWindowName as String] as? String ?? ownerName
-            if name.isEmpty || ownerName == "Window Server" || ownerName == "GlassOS" { return nil }
+            if name.isEmpty || ownerName == "Window Server" || ownerName == "GlassOS" {
+                return nil
+            }
+
+            let x = (boundsDict["X"] as? NSNumber)?.doubleValue ?? 0
+            let y = (boundsDict["Y"] as? NSNumber)?.doubleValue ?? 0
+            let w = (boundsDict["Width"] as? NSNumber)?.doubleValue ?? 0
+            let h = (boundsDict["Height"] as? NSNumber)?.doubleValue ?? 0
 
             return WindowInfo(
                 id: Int(windowID),
                 name: name,
                 ownerName: ownerName,
-                bounds: CGRect(
-                    x: bounds["X"] ?? 0,
-                    y: bounds["Y"] ?? 0,
-                    width: bounds["Width"] ?? 0,
-                    height: bounds["Height"] ?? 0
-                )
+                bounds: CGRect(x: x, y: y, width: w, height: h)
             )
         }
     }
 
-    private func handleKeyEvent(_ event: NSEvent) {
+    private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
         switch event.keyCode {
-        case 123: // Left arrow
+        case 123:
             withAnimation { selectedIndex = max(0, selectedIndex - 1) }
-        case 124: // Right arrow
+            return nil
+        case 124:
             withAnimation { selectedIndex = min(filteredWindows.count - 1, selectedIndex + 1) }
-        case 36: // Return
+            return nil
+        case 36:
             if selectedIndex < filteredWindows.count {
                 focusWindow(filteredWindows[selectedIndex])
-                dismiss()
+                dismissView()
             }
-        case 53: // Escape
-            dismiss()
+            return nil
+        case 53:
+            dismissView()
+            return nil
         default:
-            break
+            return event
         }
     }
 
-    private func focusWindow(_ window: WindowInfo) {
+    private func focusWindow(_ windowItem: WindowInfo) {
         let apps = NSWorkspace.shared.runningApplications
-        if let app = apps.first(where: { $0.localizedName == window.ownerName }) {
-            app.activate()
+        if let runningApp = apps.first(where: { $0.localizedName == windowItem.ownerName }) {
+            runningApp.activate(options: [.activateIgnoringOtherApps])
         }
     }
 
-    private func dismiss() {
+    private func dismissView() {
+        if let m = keyMonitor {
+            NSEvent.removeMonitor(m)
+            keyMonitor = nil
+        }
         withAnimation(.easeOut(duration: 0.2)) {
             isVisible = false
         }
@@ -152,7 +171,7 @@ struct WindowNavigatorView: View {
 }
 
 struct WindowCard: View {
-    let window: WindowInfo
+    let windowItem: WindowInfo
     let isSelected: Bool
 
     var body: some View {
@@ -166,27 +185,25 @@ struct WindowCard: View {
                     Image(systemName: "macwindow")
                         .font(.system(size: 40))
                         .foregroundColor(.white.opacity(0.4))
-                    Text(window.ownerName)
+                    Text(windowItem.ownerName)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.4))
                 }
             }
 
-            Text(window.name)
+            Text(windowItem.name)
                 .font(.caption.bold())
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .frame(width: 180)
 
-            Text(window.ownerName)
+            Text(windowItem.ownerName)
                 .font(.caption2)
                 .foregroundColor(.white.opacity(0.5))
                 .lineLimit(1)
         }
         .padding(12)
-        .background(
-            GlassBackground(cornerRadius: 14)
-        )
+        .background(GlassBackground(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(isSelected ? Color.cyan : Color.clear, lineWidth: 2)
@@ -198,7 +215,7 @@ struct WindowCard: View {
 
 struct KeyHint: View {
     let key: String
-    let description: String
+    let label: String
 
     var body: some View {
         HStack(spacing: 6) {
@@ -215,7 +232,7 @@ struct KeyHint: View {
                                 .stroke(Color.white.opacity(0.2), lineWidth: 1)
                         )
                 )
-            Text(description)
+            Text(label)
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.5))
         }

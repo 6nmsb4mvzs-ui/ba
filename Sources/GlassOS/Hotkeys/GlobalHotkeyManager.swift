@@ -3,7 +3,8 @@ import Carbon
 
 class GlobalHotkeyManager {
     private var eventHandler: (() -> Void)?
-    private var monitor: Any?
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
 
     init(handler: @escaping () -> Void) {
@@ -16,16 +17,14 @@ class GlobalHotkeyManager {
     }
 
     private func registerHotkey() {
-        // F3 key = keycode 99
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 99 { // F3
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 99 {
                 self?.eventHandler?()
             }
         }
 
-        // Also monitor local events
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 99 { // F3
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 99 {
                 self?.eventHandler?()
                 return nil
             }
@@ -34,11 +33,14 @@ class GlobalHotkeyManager {
     }
 
     private func unregisterHotkey() {
-        if let monitor = monitor {
-            NSEvent.removeMonitor(monitor)
+        if let m = globalMonitor {
+            NSEvent.removeMonitor(m)
         }
-        if let hotKeyRef = hotKeyRef {
-            UnregisterEventHotKey(hotKeyRef)
+        if let m = localMonitor {
+            NSEvent.removeMonitor(m)
+        }
+        if let ref = hotKeyRef {
+            UnregisterEventHotKey(ref)
         }
     }
 }
