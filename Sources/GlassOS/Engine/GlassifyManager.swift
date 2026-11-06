@@ -1,14 +1,17 @@
 import AppKit
 import Combine
 
-typealias CGSConnectionID = UInt32
-typealias CGSWindowID = UInt32
+typealias CGSConnectionID = Int32
+typealias CGSWindowID = Int32
 
 @_silgen_name("CGSMainConnectionID")
 func CGSMainConnectionID() -> CGSConnectionID
 
 @_silgen_name("CGSSetWindowAlpha")
 func CGSSetWindowAlpha(_ cid: CGSConnectionID, _ wid: CGSWindowID, _ alpha: Float) -> Int32
+
+@_silgen_name("CGSSetWindowOpacity")
+func CGSSetWindowOpacity(_ cid: CGSConnectionID, _ wid: CGSWindowID, _ isOpaque: Bool) -> Int32
 
 struct GlassifiedApp: Identifiable, Codable, Equatable {
     let bundleID: String
@@ -35,10 +38,11 @@ class GlassifyManager: ObservableObject {
     @Published var globalAlpha: Double = 0.7
 
     private var timer: Timer?
-    private let cid = CGSMainConnectionID()
+    private var cid: CGSConnectionID = 0
     private let defaults = UserDefaults.standard
 
     private init() {
+        cid = CGSMainConnectionID()
         loadSaved()
         refreshRunningApps()
         startMonitoring()
@@ -123,14 +127,18 @@ class GlassifyManager: ObservableObject {
     private func applyGlass(bundleID: String, alpha: Double) {
         let windowIDs = getWindowIDs(for: bundleID)
         for wid in windowIDs {
-            _ = CGSSetWindowAlpha(cid, CGSWindowID(wid), Float(alpha))
+            let w = CGSWindowID(wid)
+            _ = CGSSetWindowOpacity(cid, w, false)
+            _ = CGSSetWindowAlpha(cid, w, Float(alpha))
         }
     }
 
     private func restoreApp(bundleID: String) {
         let windowIDs = getWindowIDs(for: bundleID)
         for wid in windowIDs {
-            _ = CGSSetWindowAlpha(cid, CGSWindowID(wid), 1.0)
+            let w = CGSWindowID(wid)
+            _ = CGSSetWindowAlpha(cid, w, 1.0)
+            _ = CGSSetWindowOpacity(cid, w, true)
         }
     }
 
@@ -138,7 +146,7 @@ class GlassifyManager: ObservableObject {
         guard let pid = NSWorkspace.shared.runningApplications
             .first(where: { $0.bundleIdentifier == bundleID })?.processIdentifier else { return [] }
 
-        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
 
         return windowList.compactMap { info -> Int? in
             guard let ownerPID = info[kCGWindowOwnerPID as String] as? Int,
