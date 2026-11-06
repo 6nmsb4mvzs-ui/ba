@@ -90,23 +90,69 @@ struct NowPlayingOverlayView: View {
                 .padding(14)
             }
 
-            if !nowPlaying.lyrics.isEmpty {
-                GlassWidgetCard {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        Text(nowPlaying.lyrics)
-                            .font(.system(size: 13, weight: .light))
-                            .foregroundColor(.white.opacity(0.65))
-                            .lineSpacing(7)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                    }
-                    .frame(maxHeight: 220)
+            if !nowPlaying.timedLyrics.isEmpty {
+                TimedLyricsView(
+                    lyrics: nowPlaying.timedLyrics,
+                    elapsedTime: nowPlaying.elapsedTime
+                )
+            } else if !nowPlaying.lyrics.isEmpty {
+                ScrollView(.vertical, showsIndicators: false) {
+                    Text(nowPlaying.lyrics)
+                        .font(.system(size: 13, weight: .light))
+                        .foregroundColor(.white.opacity(0.65))
+                        .lineSpacing(7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
                 }
+                .frame(maxHeight: 220)
             }
 
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+// MARK: - Timed Lyrics View
+
+struct TimedLyricsView: View {
+    let lyrics: [TimedLyricLine]
+    let elapsedTime: Double
+    @State private var activeIndex: Int = 0
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(lyrics.enumerated()), id: \.element.id) { index, line in
+                        Text(line.text)
+                            .font(.system(size: index == activeIndex ? 15 : 13,
+                                          weight: index == activeIndex ? .semibold : .light))
+                            .foregroundColor(index == activeIndex ? .white : .white.opacity(0.3))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(line.id)
+                    }
+                }
+                .padding(14)
+            }
+            .frame(maxHeight: 220)
+            .onChange(of: elapsedTime) { _ in
+                let newIndex = currentIndex()
+                guard newIndex != activeIndex else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    activeIndex = newIndex
+                    proxy.scrollTo(lyrics[newIndex].id, anchor: .center)
+                }
+            }
+        }
+    }
+
+    private func currentIndex() -> Int {
+        var idx = 0
+        for (i, line) in lyrics.enumerated() {
+            if elapsedTime >= line.timestamp { idx = i }
+        }
+        return idx
     }
 }
 
@@ -118,15 +164,6 @@ struct AppLauncherOverlayView: View {
     var body: some View {
         GlassWidgetCard {
             VStack(spacing: 14) {
-                HStack {
-                    Image(systemName: "square.grid.2x2")
-                        .foregroundColor(.cyan.opacity(0.7))
-                    Text("Apps")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
-                    Spacer()
-                }
-
                 let columns = Array(repeating: GridItem(.fixed(76), spacing: 14), count: min(max(dockApps.apps.count, 1), 5))
 
                 LazyVGrid(columns: columns, spacing: 18) {
@@ -166,18 +203,7 @@ struct WallpaperCarouselOverlayView: View {
 
     var body: some View {
         GlassWidgetCard {
-            VStack(spacing: 8) {
-                HStack {
-                    Image(systemName: "photo.on.rectangle")
-                        .foregroundColor(.cyan.opacity(0.7))
-                    Text("Wallpapers")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
-                    Spacer()
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
-
+            VStack(spacing: 0) {
                 GeometryReader { geo in
                     let cardHeight: CGFloat = 100
                     let cardWidth: CGFloat = geo.size.width - 20

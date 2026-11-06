@@ -1,6 +1,12 @@
 import AppKit
 import Combine
 
+struct TimedLyricLine: Identifiable {
+    let id = UUID()
+    let timestamp: Double
+    let text: String
+}
+
 class NowPlayingManager: ObservableObject {
     static let shared = NowPlayingManager()
 
@@ -10,8 +16,14 @@ class NowPlayingManager: ObservableObject {
     @Published var artwork: NSImage?
     @Published var isPlaying: Bool = false
     @Published var lyrics: String = ""
+    @Published var timedLyrics: [TimedLyricLine] = []
+    @Published var elapsedTime: Double = 0
+    @Published var duration: Double = 0
 
     private var timer: Timer?
+    private var playbackTimer: Timer?
+    private var elapsedTimeBase: Double = 0
+    private var elapsedTimestamp: Date = Date()
     private var mrBundle: CFBundle?
 
     private typealias MRInfoCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
@@ -25,11 +37,14 @@ class NowPlayingManager: ObservableObject {
     private var artistKey = "kMRMediaRemoteNowPlayingInfoArtist"
     private var albumKey = "kMRMediaRemoteNowPlayingInfoAlbum"
     private var artworkKey = "kMRMediaRemoteNowPlayingInfoArtworkData"
+    private var elapsedTimeKey = "kMRMediaRemoteNowPlayingInfoElapsedTime"
+    private var durationKey = "kMRMediaRemoteNowPlayingInfoDuration"
 
     private init() {
         loadMediaRemote()
         setupDistributedNotifications()
         startPolling()
+        startPlaybackTimer()
     }
 
     // MARK: - Distributed Notifications (primary — no permissions needed)
@@ -67,6 +82,15 @@ class NowPlayingManager: ObservableObject {
             let state = info["Player State"] as? String ?? ""
             self.isPlaying = (state == "Playing")
 
+            if let totalTime = info["Total Time"] as? Double {
+                self.duration = totalTime / 1000.0
+            }
+            if let position = info["Player Position"] as? Double {
+                self.elapsedTimeBase = position
+                self.elapsedTimestamp = Date()
+                self.elapsedTime = position
+            }
+
             if titleChanged {
                 self.fetchArtwork()
                 self.fetchLyrics()
@@ -94,10 +118,20 @@ class NowPlayingManager: ObservableObject {
             let state = info["Player State"] as? String ?? ""
             self.isPlaying = (state == "Playing")
 
+            if let dur = info["Duration"] as? Double {
+                self.duration = dur / 1000.0
+            }
+            if let position = info["Playback Position"] as? Double {
+                self.elapsedTimeBase = position
+                self.elapsedTimestamp = Date()
+                self.elapsedTime = position
+            }
+
             if titleChanged {
                 self.fetchArtwork()
             }
             self.lyrics = ""
+            self.timedLyrics = []
         }
     }
 
@@ -122,6 +156,8 @@ class NowPlayingManager: ObservableObject {
         loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoArtist", into: &artistKey)
         loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoAlbum", into: &albumKey)
         loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoArtworkData", into: &artworkKey)
+        loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoElapsedTime", into: &elapsedTimeKey)
+        loadKeyString(bundle, symbol: "kMRMediaRemoteNowPlayingInfoDuration", into: &durationKey)
 
         if let ptr = CFBundleGetFunctionPointerForName(bundle, "MRMediaRemoteRegisterForNowPlayingNotifications" as CFString) {
             let register = unsafeBitCast(ptr, to: MRRegisterNotifs.self)
@@ -161,6 +197,15 @@ class NowPlayingManager: ObservableObject {
                 if let data = info[self.artworkKey] as? Data,
                    let img = NSImage(data: data) {
                     self.artwork = img
+                }
+
+                if let elapsed = info[self.elapsedTimeKey] as? Double {
+                    self.elapsedTimeBase = elapsed
+                    self.elapsedTimestamp = Date()
+                    self.elapsedTime = elapsed
+                }
+                if let dur = info[self.durationKey] as? Double {
+                    self.duration = dur
                 }
 
                 self.isPlaying = true
@@ -276,7 +321,10 @@ class NowPlayingManager: ObservableObject {
                 $0.bundleIdentifier == "com.apple.Music"
             }
             guard musicRunning else {
-                DispatchQueue.main.async { self?.lyrics = "" }
+                DispatchQueue.main.async {
+                    self?.lyrics = ""
+                    self?.timedLyrics = []
+                }
                 return
             }
 
@@ -296,9 +344,49 @@ class NowPlayingManager: ObservableObject {
             var error: NSDictionary?
             let result = script?.executeAndReturnError(&error)
             let text = result?.stringValue ?? ""
-            DispatchQueue.main.async {
-                self?.lyrics = text
+            self?.parseLyrics(text)
+        }
+    }
+
+    private func parseLyrics(_ text: String) {
+        var timedLines: [TimedLyricLine] = []
+
+        for line in text.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("["),
+                  let closeBracket = trimmed.firstIndex(of: "]") else { continue }
+
+            let tag = String(trimmed[trimmed.index(after: trimmed.startIndex)..<closeBracket])
+            let lyricText = String(trimmed[trimmed.index(after: closeBracket)...]).trimmingCharacters(in: .whitespaces)
+
+            let parts = tag.components(separatedBy: ":")
+            guard parts.count == 2, let minutes = Double(parts[0]) else { continue }
+
+            let secParts = parts[1].components(separatedBy: ".")
+            guard let seconds = Double(secParts[0]) else { continue }
+            var frac = 0.0
+            if secParts.count > 1, let fracVal = Double(secParts[1]) {
+                frac = fracVal / pow(10.0, Double(secParts[1].count))
             }
+
+            let timestamp = minutes * 60.0 + seconds + frac
+            if !lyricText.isEmpty {
+                timedLines.append(TimedLyricLine(timestamp: timestamp, text: lyricText))
+            }
+        }
+
+        let sorted = timedLines.sorted { $0.timestamp < $1.timestamp }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.lyrics = text
+            self?.timedLyrics = sorted
+        }
+    }
+
+    private func startPlaybackTimer() {
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self = self, self.isPlaying else { return }
+            self.elapsedTime = self.elapsedTimeBase + Date().timeIntervalSince(self.elapsedTimestamp)
         }
     }
 }
