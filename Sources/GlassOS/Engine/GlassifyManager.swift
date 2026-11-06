@@ -11,7 +11,7 @@ func CGSMainConnectionID() -> CGSConnectionID
 func CGSSetWindowAlpha(_ cid: CGSConnectionID, _ wid: CGSWindowID, _ alpha: Float) -> Int32
 
 @_silgen_name("CGSSetWindowOpacity")
-func CGSSetWindowOpacity(_ cid: CGSConnectionID, _ wid: CGSWindowID, _ isOpaque: Bool) -> Int32
+func CGSSetWindowOpacity(_ cid: CGSConnectionID, _ wid: CGSWindowID, _ isOpaque: Int32) -> Int32
 
 struct GlassifiedApp: Identifiable, Codable, Equatable {
     let bundleID: String
@@ -128,7 +128,7 @@ class GlassifyManager: ObservableObject {
         let windowIDs = getWindowIDs(for: bundleID)
         for wid in windowIDs {
             let w = CGSWindowID(wid)
-            _ = CGSSetWindowOpacity(cid, w, false)
+            _ = CGSSetWindowOpacity(cid, w, 0)
             _ = CGSSetWindowAlpha(cid, w, Float(alpha))
         }
     }
@@ -138,7 +138,7 @@ class GlassifyManager: ObservableObject {
         for wid in windowIDs {
             let w = CGSWindowID(wid)
             _ = CGSSetWindowAlpha(cid, w, 1.0)
-            _ = CGSSetWindowOpacity(cid, w, true)
+            _ = CGSSetWindowOpacity(cid, w, 1)
         }
     }
 
