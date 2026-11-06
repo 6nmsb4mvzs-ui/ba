@@ -8,6 +8,7 @@ struct MainContentView: View {
 
     enum SidebarTab: String, CaseIterable {
         case wallpapers = "Wallpapers"
+        case glassify = "Glassify"
         case monitor = "System Monitor"
         case settings = "Settings"
         case updates = "Updates"
@@ -105,6 +106,8 @@ struct MainContentView: View {
             case .wallpapers:
                 WallpaperBrowserView()
                     .environmentObject(wallpaperManager)
+            case .glassify:
+                GlassifyView()
             case .monitor:
                 SystemMonitorView()
             case .settings:
@@ -122,6 +125,7 @@ struct MainContentView: View {
     private func iconFor(_ tab: SidebarTab) -> String {
         switch tab {
         case .wallpapers: return "photo.on.rectangle.angled"
+        case .glassify: return "wand.and.stars"
         case .monitor: return "gauge.with.dots.needle.33percent"
         case .settings: return "gearshape"
         case .updates: return "arrow.triangle.2.circlepath"
