@@ -34,6 +34,32 @@ struct WallpaperItem: Identifiable, Codable {
             return [Color(hex: "#0f2027"), Color(hex: "#2c5364")]
         case "abstract":
             return [Color(hex: "#ee9ca7"), Color(hex: "#ffdde1")]
+        case "superhero":
+            return [Color(hex: "#1a1a2e"), Color(hex: "#16213e")]
+        case "anime", "cosplay":
+            return [Color(hex: "#2d1b69"), Color(hex: "#e91e8c")]
+        case "cyberpunk":
+            return [Color(hex: "#0d0221"), Color(hex: "#0abdc6")]
+        case "supercar":
+            return [Color(hex: "#1a1a1a"), Color(hex: "#8b0000")]
+        case "animal":
+            return [Color(hex: "#2c1810"), Color(hex: "#5c4033")]
+        case "underwater":
+            return [Color(hex: "#001f3f"), Color(hex: "#0077b6")]
+        case "gaming":
+            return [Color(hex: "#0d0d2b"), Color(hex: "#6c16c7")]
+        case "samurai", "japanese":
+            return [Color(hex: "#1a0000"), Color(hex: "#c41e3a")]
+        case "fantasy":
+            return [Color(hex: "#1a0533"), Color(hex: "#7b2d8e")]
+        case "skull", "dark":
+            return [Color(hex: "#0a0a0a"), Color(hex: "#333333")]
+        case "synthwave":
+            return [Color(hex: "#2b1055"), Color(hex: "#d53f8c")]
+        case "streetart":
+            return [Color(hex: "#2d3436"), Color(hex: "#e17055")]
+        case "spider":
+            return [Color(hex: "#2c3e50"), Color(hex: "#95a5a6")]
         default:
             let hash = abs(name.hashValue)
             let hue = Double(hash % 360) / 360.0
@@ -138,6 +164,88 @@ class WallpaperManager: ObservableObject {
         items.append(wp("fluid-art", "Fluid Art", "photo-1558591710-4b4a1ae0f04d", "abstract"))
         items.append(wp("smoke-colors", "Smoke Colors", "photo-1541701494587-cb58502866ab", "abstract"))
         items.append(wp("crystal-cave", "Crystal Cave", "photo-1519681393784-d120267933ba", "abstract"))
+
+        // --- Superhero / Batman ---
+        items.append(wp("batman-silhouette", "Batman Silhouette", "photo-1583156340160-7867f31285d5", "superhero"))
+        items.append(wp("dark-knight", "Dark Knight", "photo-1531259683007-016a7b628fc3", "superhero"))
+        items.append(wp("batman-cosplay", "Batman Cosplay", "photo-1653395108060-e0236d7a9e58", "superhero"))
+        items.append(wp("batman-rooftop", "Batman Rooftop", "photo-1509347528160-9a9e33742cdb", "superhero"))
+        items.append(wp("dark-armor", "Dark Armor", "photo-1776557819088-b8da598348c8", "superhero"))
+
+        // --- Anime & Cosplay ---
+        items.append(wp("anime-neon", "Anime Neon", "photo-1708034677699-6f39d9c59f6e", "anime"))
+        items.append(wp("cosplay-umbrella", "Cosplay Umbrella", "photo-1735720518739-3f519a8b5a73", "cosplay"))
+        items.append(wp("sword-warrior", "Sword Warrior", "photo-1697715744014-7ab37c005ba5", "cosplay"))
+        items.append(wp("blue-hair", "Blue Hair", "photo-1727409048076-182d2907a59e", "anime"))
+        items.append(wp("dark-assassin", "Dark Assassin", "photo-1697715841744-9c24df04dacc", "cosplay"))
+
+        // --- Cyberpunk & Neon ---
+        items.append(wp("cyberpunk-city", "Cyberpunk City", "photo-1672872476232-da16b45c9001", "cyberpunk"))
+        items.append(wp("neon-walkway", "Neon Walkway", "photo-1519608487953-e999c86e7455", "cyberpunk"))
+        items.append(wp("neon-street", "Neon Street", "photo-1732704895089-ec0e78d7ce91", "cyberpunk"))
+        items.append(wp("neon-signs", "Neon Signs", "photo-1653142267767-a66c7cf17bc1", "cyberpunk"))
+        items.append(wp("night-drive", "Night Drive", "photo-1600998837340-4887228e311f", "cyberpunk"))
+
+        // --- Supercars ---
+        items.append(wp("dark-audi", "Dark Audi R8", "photo-1567808291548-fc3ee04dbcf0", "supercar"))
+        items.append(wp("lamborghini", "Lamborghini Aventador", "photo-1552176625-e47ff529b595", "supercar"))
+        items.append(wp("sports-car-dark", "Sports Car Dark", "photo-1756262208654-2cf76c5c267c", "supercar"))
+        items.append(wp("red-coupe", "Red Sports Coupe", "photo-1574162438041-e90a6ab60963", "supercar"))
+        items.append(wp("car-red-lights", "Car Red Lights", "photo-1580014317999-e9f1936787a5", "supercar"))
+
+        // --- Dark City ---
+        items.append(wp("beijing-night", "Beijing Night", "photo-1611416457332-946853cc75d6", "city"))
+        items.append(wp("building-lights", "Building Lights", "photo-1514439827219-9137a0b99245", "cyberpunk"))
+        items.append(wp("seoul-night", "Seoul Night", "photo-1679212839469-fb16a48919ce", "city"))
+        items.append(wp("aerial-night-city", "Aerial City Night", "photo-1577450775949-58ec8d02cad9", "city"))
+
+        // --- Wolves ---
+        items.append(wp("wolf-howl", "Wolf Howl", "photo-1564166174574-a9666f590437", "animal"))
+        items.append(wp("arctic-wolf", "Arctic Wolf", "photo-1622698639855-fda2a55e0cbe", "animal"))
+
+        // --- Lions ---
+        items.append(wp("lion-bw", "Lion B&W", "photo-1614027164847-1b28cfe1df60", "animal"))
+        items.append(wp("lion-closeup", "Lion Close Up", "photo-1511216113906-8f57bb83e776", "animal"))
+        items.append(wp("lion-portrait", "Lion Portrait", "photo-1585468274952-66591eb14165", "animal"))
+
+        // --- Eagles ---
+        items.append(wp("bald-eagle", "Bald Eagle", "photo-1557401622-cfc0aa5d146c", "animal"))
+        items.append(wp("eagle-soaring", "Eagle Soaring", "photo-1531884070720-875c7622d4c6", "animal"))
+
+        // --- Underwater ---
+        items.append(wp("white-jellyfish", "White Jellyfish", "photo-1495012379376-194a416fcc5f", "underwater"))
+        items.append(wp("pink-jellyfish", "Pink Jellyfish", "photo-1543007168-5fa9b3c5f5fb", "underwater"))
+        items.append(wp("golden-jellyfish", "Golden Jellyfish", "photo-1532191343016-47bf741b8b3c", "underwater"))
+
+        // --- Japanese / Samurai ---
+        items.append(wp("samurai-statue", "Samurai Statue", "photo-1600924779117-927b4f81457d", "samurai"))
+        items.append(wp("pagoda-moonlight", "Pagoda Moonlight", "photo-1508051397328-4cffae0e8c2c", "japanese"))
+        items.append(wp("torii-gate", "Torii Gate", "photo-1698069005894-f01747b3f152", "japanese"))
+        items.append(wp("akihabara-neon", "Akihabara Neon", "photo-1656857228227-ba298d7606e9", "japanese"))
+        items.append(wp("akihabara-night", "Akihabara Night", "photo-1677284431119-5e969e0174d7", "japanese"))
+        items.append(wp("akihabara-signs", "Akihabara Signs", "photo-1739283539748-1978c12d015f", "japanese"))
+
+        // --- Gaming ---
+        items.append(wp("gaming-setup", "Gaming Setup", "photo-1626218174358-7769486c4b79", "gaming"))
+        items.append(wp("rgb-keyboard", "RGB Keyboard", "photo-1538481199705-c710c4e965fc", "gaming"))
+
+        // --- Dragon & Fantasy ---
+        items.append(wp("dragon-rider", "Dragon Rider", "photo-1774967768350-c186d3ea0ffd", "fantasy"))
+
+        // --- Skull & Dark ---
+        items.append(wp("skull-forest", "Skull Forest", "photo-1760930380017-b0f1fdad0242", "skull"))
+        items.append(wp("skull-face-paint", "Skull Face Paint", "photo-1791926408765-3b785dbb425b", "dark"))
+
+        // --- Synthwave ---
+        items.append(wp("synthwave-sunset", "Synthwave Sunset", "photo-1706466615917-e44750d177d7", "synthwave"))
+
+        // --- Street Art ---
+        items.append(wp("graffiti-berlin", "Graffiti Berlin", "photo-1601913463731-cfba9fd31ed3", "streetart"))
+        items.append(wp("street-art-mural", "Street Art Mural", "photo-1540929819775-fcc7d4649250", "streetart"))
+
+        // --- Spider Web ---
+        items.append(wp("spider-web", "Spider Web", "photo-1608388408287-6b477da13439", "spider"))
+        items.append(wp("spider-closeup", "Spider Close-up", "photo-1600001040566-2c86ad40520e", "spider"))
 
         // Scan for user-added local wallpapers
         if let enumerator = FileManager.default.enumerator(at: wallpaperDirectory, includingPropertiesForKeys: nil) {
