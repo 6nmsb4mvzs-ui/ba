@@ -15,7 +15,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupGlobalHotkeys()
 
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -146,7 +150,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setupMainWindow()
         }
         mainWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     @objc func showNavigator() {

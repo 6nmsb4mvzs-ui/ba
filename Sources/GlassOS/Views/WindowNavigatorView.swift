@@ -152,7 +152,11 @@ struct WindowNavigatorView: View {
     private func focusWindow(_ windowItem: WindowInfo) {
         let apps = NSWorkspace.shared.runningApplications
         if let runningApp = apps.first(where: { $0.localizedName == windowItem.ownerName }) {
-            runningApp.activate(options: [.activateIgnoringOtherApps])
+            if #available(macOS 14.0, *) {
+                runningApp.activate()
+            } else {
+                runningApp.activate(options: [.activateIgnoringOtherApps])
+            }
         }
     }
 
