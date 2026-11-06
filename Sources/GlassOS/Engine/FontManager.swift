@@ -58,6 +58,13 @@ class FontManager: ObservableObject {
         return .custom(clockFontFamily, size: size).weight(.light)
     }
 
+    func widgetFont(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        if clockFontFamily.isEmpty {
+            return .system(size: size, weight: weight)
+        }
+        return .custom(clockFontFamily, size: size).weight(weight)
+    }
+
     func displayName(for family: String) -> String {
         family.isEmpty ? "System Default" : family
     }

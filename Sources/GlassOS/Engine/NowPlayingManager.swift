@@ -338,6 +338,7 @@ class NowPlayingManager: ObservableObject {
         }
 
         let desc = result
+        guard desc.numberOfItems > 0 else { return }
         for i in 1...desc.numberOfItems {
             guard let sub = desc.atIndex(i) else { continue }
             let d = sub.data

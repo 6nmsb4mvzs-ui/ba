@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var nowPlayingPanel: NSPanel?
     var appLauncherPanel: NSPanel?
     var wallpaperPanel: NSPanel?
+    var fontChooserPanel: NSPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         hideDock()
@@ -127,30 +128,40 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         clockPanel?.contentView = NSHostingView(rootView: ClockOverlayView())
         clockPanel?.orderFront(nil)
 
-        // Now Playing — top left, interactive (wider for controls + next-up queue)
+        // Now Playing — top right, interactive
         nowPlayingPanel = makeOverlayPanel(
-            frame: NSRect(x: sf.minX + 60, y: sf.maxY - 780, width: 340, height: 680),
+            frame: NSRect(x: sf.maxX - 310, y: sf.maxY - 390, width: 300, height: 360),
             level: widgetLevel
         )
         nowPlayingPanel?.contentView = WidgetHostingView(rootView: NowPlayingOverlayView())
         nowPlayingPanel?.orderFront(nil)
 
-        // App Launcher — center, interactive
+        // App Launcher — right side below music, interactive
         appLauncherPanel = makeOverlayPanel(
-            frame: NSRect(x: sf.midX - 265, y: sf.midY - 200, width: 530, height: 400),
+            frame: NSRect(x: sf.maxX - 310, y: sf.maxY - 540, width: 300, height: 140),
             level: widgetLevel
         )
         appLauncherPanel?.contentView = WidgetHostingView(rootView: AppLauncherOverlayView())
         appLauncherPanel?.orderFront(nil)
 
-        // Wallpaper Carousel — right side, interactive
-        let wpHeight = min(sf.height - 80, 620)
+        // Wallpaper Carousel — bottom right, interactive
+        let sidebarBottom = sf.minY + 30
+        let sidebarTop = sf.maxY - 560
+        let sidebarH = max(sidebarTop - sidebarBottom, 200)
         wallpaperPanel = makeOverlayPanel(
-            frame: NSRect(x: sf.maxX - 260, y: sf.midY - wpHeight / 2, width: 240, height: wpHeight),
+            frame: NSRect(x: sf.maxX - 180, y: sidebarBottom, width: 170, height: sidebarH),
             level: widgetLevel
         )
         wallpaperPanel?.contentView = WidgetHostingView(rootView: WallpaperCarouselOverlayView())
         wallpaperPanel?.orderFront(nil)
+
+        // Font Chooser — bottom right, left of wallpaper, interactive
+        fontChooserPanel = makeOverlayPanel(
+            frame: NSRect(x: sf.maxX - 310, y: sidebarBottom, width: 120, height: sidebarH),
+            level: widgetLevel
+        )
+        fontChooserPanel?.contentView = WidgetHostingView(rootView: FontChooserOverlayView())
+        fontChooserPanel?.orderFront(nil)
 
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
@@ -182,14 +193,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let screen = NSScreen.main else { return }
         let sf = screen.frame
         clockPanel?.setFrame(NSRect(x: sf.midX - 220, y: sf.maxY - 130, width: 440, height: 110), display: true)
-        nowPlayingPanel?.setFrame(NSRect(x: sf.minX + 60, y: sf.maxY - 780, width: 340, height: 680), display: true)
-        appLauncherPanel?.setFrame(NSRect(x: sf.midX - 265, y: sf.midY - 200, width: 530, height: 400), display: true)
-        let wpHeight = min(sf.height - 80, 620)
-        wallpaperPanel?.setFrame(NSRect(x: sf.maxX - 260, y: sf.midY - wpHeight / 2, width: 240, height: wpHeight), display: true)
+        nowPlayingPanel?.setFrame(NSRect(x: sf.maxX - 310, y: sf.maxY - 390, width: 300, height: 360), display: true)
+        appLauncherPanel?.setFrame(NSRect(x: sf.maxX - 310, y: sf.maxY - 540, width: 300, height: 140), display: true)
+        let sidebarBottom = sf.minY + 30
+        let sidebarTop = sf.maxY - 560
+        let sidebarH = max(sidebarTop - sidebarBottom, 200)
+        wallpaperPanel?.setFrame(NSRect(x: sf.maxX - 180, y: sidebarBottom, width: 170, height: sidebarH), display: true)
+        fontChooserPanel?.setFrame(NSRect(x: sf.maxX - 310, y: sidebarBottom, width: 120, height: sidebarH), display: true)
     }
 
     private var allOverlayPanels: [NSPanel?] {
-        [clockPanel, nowPlayingPanel, appLauncherPanel, wallpaperPanel]
+        [clockPanel, nowPlayingPanel, appLauncherPanel, wallpaperPanel, fontChooserPanel]
     }
 
     @objc func toggleDesktopOverlay() {

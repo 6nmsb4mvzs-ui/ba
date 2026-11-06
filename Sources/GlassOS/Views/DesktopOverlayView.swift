@@ -39,9 +39,10 @@ struct ClockOverlayView: View {
 
 struct NowPlayingOverlayView: View {
     @ObservedObject var nowPlaying = NowPlayingManager.shared
+    @ObservedObject var fontManager = FontManager.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             GlassWidgetCard {
                 VStack(spacing: 0) {
                     HStack(spacing: 12) {
@@ -49,17 +50,17 @@ struct NowPlayingOverlayView: View {
                             Image(nsImage: art)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 72, height: 72)
-                                .cornerRadius(10)
+                                .frame(width: 64, height: 64)
+                                .cornerRadius(8)
                                 .clipped()
                         } else {
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 8)
                                 .fill(LinearGradient(colors: [.cyan.opacity(0.15), .blue.opacity(0.15)],
                                                      startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 72, height: 72)
+                                .frame(width: 64, height: 64)
                                 .overlay(
                                     Image(systemName: "music.note")
-                                        .font(.system(size: 24))
+                                        .font(.system(size: 22))
                                         .foregroundColor(.white.opacity(0.25))
                                 )
                         }
@@ -67,32 +68,32 @@ struct NowPlayingOverlayView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             if !nowPlaying.title.isEmpty {
                                 Text(nowPlaying.title)
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(fontManager.widgetFont(size: 14, weight: .semibold))
                                     .foregroundColor(.white)
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Text(nowPlaying.artist)
-                                    .font(.system(size: 11))
+                                    .font(fontManager.widgetFont(size: 12))
                                     .foregroundColor(.white.opacity(0.55))
                                     .lineLimit(1)
                                 if !nowPlaying.album.isEmpty {
                                     Text(nowPlaying.album)
-                                        .font(.system(size: 10))
+                                        .font(fontManager.widgetFont(size: 11))
                                         .foregroundColor(.white.opacity(0.35))
                                         .lineLimit(1)
                                 }
                             } else {
                                 Text("Not Playing")
-                                    .font(.system(size: 13))
+                                    .font(fontManager.widgetFont(size: 13))
                                     .foregroundColor(.white.opacity(0.35))
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 10)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
 
-                    // Progress bar
                     VStack(spacing: 4) {
                         GeometryReader { geo in
                             let progress = nowPlaying.duration > 0
@@ -119,51 +120,49 @@ struct NowPlayingOverlayView: View {
                                 .foregroundColor(.white.opacity(0.45))
                         }
                     }
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 12)
 
-                    // Playback controls
-                    HStack(spacing: 20) {
+                    HStack(spacing: 18) {
                         Button(action: { nowPlaying.toggleShuffle() }) {
                             Image(systemName: "shuffle")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(nowPlaying.shuffleOn ? .cyan : .white.opacity(0.5))
                         }
                         .buttonStyle(.plain)
 
                         Button(action: { nowPlaying.previousTrack() }) {
                             Image(systemName: "backward.fill")
-                                .font(.system(size: 16))
+                                .font(.system(size: 14))
                                 .foregroundColor(.white.opacity(0.8))
                         }
                         .buttonStyle(.plain)
 
                         Button(action: { nowPlaying.togglePlayPause() }) {
                             Image(systemName: nowPlaying.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 22))
+                                .font(.system(size: 20))
                                 .foregroundColor(.white)
                         }
                         .buttonStyle(.plain)
 
                         Button(action: { nowPlaying.nextTrack() }) {
                             Image(systemName: "forward.fill")
-                                .font(.system(size: 16))
+                                .font(.system(size: 14))
                                 .foregroundColor(.white.opacity(0.8))
                         }
                         .buttonStyle(.plain)
 
                         Button(action: { nowPlaying.toggleRepeat() }) {
                             Image(systemName: nowPlaying.repeatMode == 2 ? "repeat.1" : "repeat")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(nowPlaying.repeatMode > 0 ? .cyan : .white.opacity(0.5))
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.bottom, 6)
+                    .padding(.vertical, 6)
+                    .padding(.bottom, 4)
                 }
             }
 
-            // Lyrics section
             if !nowPlaying.timedLyrics.isEmpty {
                 TimedLyricsView(
                     lyrics: nowPlaying.timedLyrics,
@@ -172,36 +171,35 @@ struct NowPlayingOverlayView: View {
             } else if !nowPlaying.lyrics.isEmpty {
                 ScrollView(.vertical, showsIndicators: false) {
                     Text(nowPlaying.lyrics)
-                        .font(.system(size: 12, weight: .light))
+                        .font(fontManager.widgetFont(size: 12, weight: .light))
                         .foregroundColor(.white.opacity(0.65))
-                        .lineSpacing(6)
+                        .lineSpacing(5)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
+                        .padding(10)
                 }
-                .frame(maxHeight: 160)
+                .frame(maxHeight: 120)
             }
 
-            // Next Up queue
             if !nowPlaying.nextUp.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("NEXT UP")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 8, weight: .bold))
                         .foregroundColor(.white.opacity(0.35))
                         .tracking(1)
                         .padding(.horizontal, 4)
 
                     ForEach(nowPlaying.nextUp) { track in
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             Image(systemName: "music.note")
-                                .font(.system(size: 9))
+                                .font(.system(size: 8))
                                 .foregroundColor(.white.opacity(0.25))
-                            VStack(alignment: .leading, spacing: 1) {
+                            VStack(alignment: .leading, spacing: 0) {
                                 Text(track.title)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(fontManager.widgetFont(size: 10, weight: .medium))
                                     .foregroundColor(.white.opacity(0.7))
                                     .lineLimit(1)
                                 Text(track.artist)
-                                    .font(.system(size: 10))
+                                    .font(fontManager.widgetFont(size: 9))
                                     .foregroundColor(.white.opacity(0.4))
                                     .lineLimit(1)
                             }
@@ -209,7 +207,7 @@ struct NowPlayingOverlayView: View {
                         .padding(.horizontal, 4)
                     }
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 8)
             }
 
             Spacer(minLength: 0)
@@ -235,22 +233,23 @@ struct TimedLyricsView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     ForEach(Array(lyrics.enumerated()), id: \.element.id) { index, line in
                         Text(line.text)
-                            .font(.system(size: index == activeIndex ? 15 : 13,
+                            .font(.system(size: index == activeIndex ? 14 : 12,
                                           weight: index == activeIndex ? .semibold : .light))
                             .foregroundColor(index == activeIndex ? .white : .white.opacity(0.3))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id(line.id)
                     }
                 }
-                .padding(14)
+                .padding(12)
             }
-            .frame(maxHeight: 220)
+            .frame(maxHeight: 160)
             .onChange(of: elapsedTime) { _ in
+                guard !lyrics.isEmpty else { return }
                 let newIndex = currentIndex()
-                guard newIndex != activeIndex else { return }
+                guard newIndex != activeIndex, newIndex < lyrics.count else { return }
                 withAnimation(.easeInOut(duration: 0.3)) {
                     activeIndex = newIndex
                     proxy.scrollTo(lyrics[newIndex].id, anchor: .center)
@@ -268,7 +267,7 @@ struct TimedLyricsView: View {
     }
 }
 
-// MARK: - App Launcher Widget
+// MARK: - App Launcher Widget (compact horizontal strip)
 
 struct AppLauncherOverlayView: View {
     @ObservedObject var dockApps = DockAppsManager.shared
@@ -278,30 +277,28 @@ struct AppLauncherOverlayView: View {
         let iconColor = DockAppsManager.adaptiveColor(for: wallpaperManager.currentWallpaper)
 
         GlassWidgetCard {
-            VStack(spacing: 14) {
-                let columns = Array(repeating: GridItem(.fixed(76), spacing: 14), count: min(max(dockApps.apps.count, 1), 5))
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: min(dockApps.apps.count, 7))
 
-                LazyVGrid(columns: columns, spacing: 18) {
-                    ForEach(dockApps.apps.prefix(15)) { app in
-                        Button(action: { dockApps.launch(app) }) {
-                            VStack(spacing: 5) {
-                                Image(systemName: app.symbolName)
-                                    .font(.system(size: 28, weight: .light))
-                                    .foregroundColor(iconColor)
-                                    .frame(width: 46, height: 46)
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(dockApps.apps.prefix(7)) { app in
+                    Button(action: { dockApps.launch(app) }) {
+                        VStack(spacing: 3) {
+                            Image(systemName: app.symbolName)
+                                .font(.system(size: 22, weight: .light))
+                                .foregroundColor(iconColor)
+                                .frame(width: 34, height: 34)
 
-                                Text(app.name)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(iconColor.opacity(0.75))
-                                    .lineLimit(1)
-                                    .frame(width: 66)
-                            }
+                            Text(app.name)
+                                .font(.system(size: 8))
+                                .foregroundColor(iconColor.opacity(0.7))
+                                .lineLimit(1)
                         }
-                        .buttonStyle(AppButtonStyle())
                     }
+                    .buttonStyle(AppButtonStyle())
                 }
             }
-            .padding(18)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -312,6 +309,7 @@ struct AppLauncherOverlayView: View {
 struct WallpaperCarouselOverlayView: View {
     @ObservedObject var wallpaperManager = WallpaperManager.shared
     @ObservedObject var imageCache = ImageCache.shared
+    @ObservedObject var fontManager = FontManager.shared
     @State private var carouselIndex: Int = 0
     @State private var carouselDragOffset: CGFloat = 0
     @State private var scrollAccumulator: CGFloat = 0
@@ -320,8 +318,8 @@ struct WallpaperCarouselOverlayView: View {
         GlassWidgetCard {
             VStack(spacing: 0) {
                 GeometryReader { geo in
-                    let cardHeight: CGFloat = 100
-                    let cardWidth: CGFloat = geo.size.width - 20
+                    let cardHeight: CGFloat = 80
+                    let cardWidth: CGFloat = geo.size.width - 16
                     let spacing: CGFloat = cardHeight * 0.75
                     let centerY = geo.size.height / 2
                     let wallpapers = wallpaperManager.wallpapers
@@ -408,20 +406,75 @@ struct WallpaperCarouselOverlayView: View {
             }
 
             LinearGradient(colors: [.clear, .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
-                .frame(height: 36)
+                .frame(height: 30)
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
             Text(wp.name)
-                .font(.system(size: 10, weight: .medium))
+                .font(fontManager.widgetFont(size: 9, weight: .medium))
                 .foregroundColor(.white)
                 .lineLimit(1)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 6)
-
+                .padding(.horizontal, 6)
+                .padding(.bottom, 5)
         }
         .frame(width: width, height: height)
-        .cornerRadius(8)
-        .shadow(color: wallpaperManager.currentWallpaper?.id == wp.id ? .cyan.opacity(0.4) : .black.opacity(0.15), radius: wallpaperManager.currentWallpaper?.id == wp.id ? 12 : 6)
+        .cornerRadius(6)
+        .shadow(color: wallpaperManager.currentWallpaper?.id == wp.id ? .cyan.opacity(0.4) : .black.opacity(0.15), radius: wallpaperManager.currentWallpaper?.id == wp.id ? 10 : 4)
+    }
+}
+
+// MARK: - Font Chooser Widget
+
+struct FontChooserOverlayView: View {
+    @ObservedObject var fontManager = FontManager.shared
+    @State private var scrollAccumulator: CGFloat = 0
+
+    private var fonts: [String] {
+        FontManager.recommendedFonts
+    }
+
+    var body: some View {
+        GlassWidgetCard {
+            VStack(spacing: 0) {
+                Text("FONT")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white.opacity(0.35))
+                    .tracking(1)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 2) {
+                        ForEach(fonts, id: \.self) { family in
+                            Button(action: {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    fontManager.clockFontFamily = family
+                                }
+                            }) {
+                                Text(fontManager.displayName(for: family))
+                                    .font(family.isEmpty
+                                        ? .system(size: 10, weight: .medium)
+                                        : .custom(family, size: 10))
+                                    .foregroundColor(fontManager.clockFontFamily == family ? .cyan : .white.opacity(0.6))
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(fontManager.clockFontFamily == family
+                                                ? Color.white.opacity(0.08)
+                                                : Color.clear)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 8)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
