@@ -52,15 +52,54 @@ struct PositioningLaunchView: View {
     }
 }
 
+private class PositioningState: ObservableObject {
+    @Published var tempPositions: [String: CGPoint] = [:]
+    @Published var tempSizes: [String: CGSize] = [:]
+    @Published var selectedWidget: String?
+    @Published var saved = false
+    var screenSize: CGSize = .zero
+    var keyMonitor: Any?
+
+    func loadCurrentPositions(screenSize: CGSize) {
+        self.screenSize = screenSize
+        let layout = WidgetLayoutManager.shared
+        for def in WidgetLayoutManager.widgetDefinitions {
+            let norm = layout.normalizedPosition(for: def.key) ?? layout.defaultNormalizedPosition(for: def.key)
+            tempPositions[def.key] = CGPoint(
+                x: screenSize.width * norm.x,
+                y: screenSize.height * (1 - norm.y)
+            )
+            tempSizes[def.key] = layout.widgetSize(for: def.key)
+        }
+    }
+
+    func savePositions() {
+        let layout = WidgetLayoutManager.shared
+        for def in WidgetLayoutManager.widgetDefinitions {
+            guard let pos = tempPositions[def.key] else { continue }
+            let normX = pos.x / screenSize.width
+            let normY = 1 - (pos.y / screenSize.height)
+            layout.savePosition(CGPoint(x: normX, y: normY), for: def.key)
+            if let size = tempSizes[def.key] {
+                layout.saveSize(size, for: def.key)
+            }
+        }
+        NotificationCenter.default.post(name: .init("WidgetLayoutDidChange"), object: nil)
+        saved = true
+    }
+
+    func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+}
+
 struct WidgetPositioningView: View {
     var closePanel: () -> Void
 
-    @State private var tempPositions: [String: CGPoint] = [:]
-    @State private var tempSizes: [String: CGSize] = [:]
-    @State private var selectedWidget: String?
-    @State private var saved = false
-    @State private var keyMonitor: Any?
-    @State private var screenSize: CGSize = .zero
+    @StateObject private var state = PositioningState()
 
     var body: some View {
         GeometryReader { geo in
@@ -76,46 +115,46 @@ struct WidgetPositioningView: View {
                 instructionBar
             }
             .onAppear {
-                screenSize = geo.size
-                loadCurrentPositions(screenSize: geo.size)
-                installKeyMonitor(screenSize: geo.size)
+                state.screenSize = geo.size
+                state.loadCurrentPositions(screenSize: geo.size)
+                installKeyMonitor()
             }
             .onDisappear {
-                removeKeyMonitor()
+                state.removeKeyMonitor()
             }
             .onChange(of: geo.size) { newSize in
-                screenSize = newSize
+                state.screenSize = newSize
             }
         }
     }
 
     private func widgetDraggable(def: WidgetLayout, geo: GeometryProxy) -> some View {
-        let pos = tempPositions[def.key] ?? CGPoint(
+        let pos = state.tempPositions[def.key] ?? CGPoint(
             x: geo.size.width * def.defaultNormX,
             y: geo.size.height * (1 - def.defaultNormY)
         )
-        let size = tempSizes[def.key] ?? CGSize(width: def.width, height: def.height)
+        let size = state.tempSizes[def.key] ?? CGSize(width: def.width, height: def.height)
 
         return WidgetPreview(
             label: def.label,
             size: size,
-            isSelected: selectedWidget == def.key
+            isSelected: state.selectedWidget == def.key
         )
         .position(pos)
         .gesture(
             DragGesture()
                 .onChanged { value in
-                    selectedWidget = def.key
+                    state.selectedWidget = def.key
                     let halfW = size.width / 2
                     let halfH = size.height / 2
                     let newX = min(max(value.location.x, halfW), geo.size.width - halfW)
                     let newY = min(max(value.location.y, halfH), geo.size.height - halfH)
-                    tempPositions[def.key] = CGPoint(x: newX, y: newY)
+                    state.tempPositions[def.key] = CGPoint(x: newX, y: newY)
                 }
                 .onEnded { _ in }
         )
         .onTapGesture {
-            selectedWidget = def.key
+            state.selectedWidget = def.key
         }
     }
 
@@ -123,7 +162,7 @@ struct WidgetPositioningView: View {
         VStack {
             Spacer()
             HStack(spacing: 16) {
-                if saved {
+                if state.saved {
                     Text("Positions saved! Press Esc to close.")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.green)
@@ -158,71 +197,39 @@ struct WidgetPositioningView: View {
         .foregroundColor(color)
     }
 
-    private func installKeyMonitor(screenSize: CGSize) {
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+    private func installKeyMonitor() {
+        let s = state
+        let close = closePanel
+        s.keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             switch event.keyCode {
             case 53: // Esc
-                closePanel()
+                close()
                 return nil
             case 36: // Return
-                if !saved {
-                    savePositions(screenSize: screenSize)
+                if !s.saved {
+                    s.savePositions()
                 } else {
-                    closePanel()
+                    close()
                 }
                 return nil
             case 126: // Up arrow — scale up
-                if let key = selectedWidget {
-                    let current = tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
-                    tempSizes[key] = CGSize(width: current.width * 1.1, height: current.height * 1.1)
+                if let key = s.selectedWidget {
+                    let current = s.tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
+                    s.tempSizes[key] = CGSize(width: current.width * 1.1, height: current.height * 1.1)
                 }
                 return nil
             case 125: // Down arrow — scale down
-                if let key = selectedWidget {
-                    let current = tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
+                if let key = s.selectedWidget {
+                    let current = s.tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
                     let newW = max(current.width * 0.9, 60)
                     let newH = max(current.height * 0.9, 40)
-                    tempSizes[key] = CGSize(width: newW, height: newH)
+                    s.tempSizes[key] = CGSize(width: newW, height: newH)
                 }
                 return nil
             default:
                 return event
             }
         }
-    }
-
-    private func removeKeyMonitor() {
-        if let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
-        }
-    }
-
-    private func loadCurrentPositions(screenSize: CGSize) {
-        let layout = WidgetLayoutManager.shared
-        for def in WidgetLayoutManager.widgetDefinitions {
-            let norm = layout.normalizedPosition(for: def.key) ?? layout.defaultNormalizedPosition(for: def.key)
-            tempPositions[def.key] = CGPoint(
-                x: screenSize.width * norm.x,
-                y: screenSize.height * (1 - norm.y)
-            )
-            tempSizes[def.key] = layout.widgetSize(for: def.key)
-        }
-    }
-
-    private func savePositions(screenSize: CGSize) {
-        let layout = WidgetLayoutManager.shared
-        for def in WidgetLayoutManager.widgetDefinitions {
-            guard let pos = tempPositions[def.key] else { continue }
-            let normX = pos.x / screenSize.width
-            let normY = 1 - (pos.y / screenSize.height)
-            layout.savePosition(CGPoint(x: normX, y: normY), for: def.key)
-            if let size = tempSizes[def.key] {
-                layout.saveSize(size, for: def.key)
-            }
-        }
-        NotificationCenter.default.post(name: .init("WidgetLayoutDidChange"), object: nil)
-        saved = true
     }
 }
 
