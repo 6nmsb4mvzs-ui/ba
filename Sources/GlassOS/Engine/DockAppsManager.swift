@@ -20,6 +20,7 @@ class DockAppsManager: ObservableObject {
         ("Discord",   "bubble.left.and.bubble.right", "com.hnc.Discord"),
         ("Soundgrab", "waveform",                     "com.soundgrab.Soundgrab"),
         ("PG3D",      "gamecontroller",               "com.pixel.gun3d"),
+        ("Modrinth",  "shippingbox",                  "com.modrinth.theseus"),
         ("GlassOS",   "sparkles.rectangle.stack",     Bundle.main.bundleIdentifier ?? "com.glassos.app"),
     ]
 
@@ -30,14 +31,40 @@ class DockAppsManager: ObservableObject {
     }
 
     func launch(_ app: DockApp) {
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
-            NSWorkspace.shared.openApplication(at: url, configuration: .init()) { _, _ in }
+        if app.bundleID == (Bundle.main.bundleIdentifier ?? "com.glassos.app") {
+            if #available(macOS 14.0, *) {
+                NSApp.activate()
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+            }
             return
         }
+
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { runningApp, error in
+                if let runningApp = runningApp {
+                    DispatchQueue.main.async {
+                        runningApp.activate()
+                    }
+                }
+            }
+            return
+        }
+
         for dir in ["/Applications", NSHomeDirectory() + "/Applications"] {
             let path = "\(dir)/\(app.name).app"
             if FileManager.default.fileExists(atPath: path) {
-                NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: .init()) { _, _ in }
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config) { runningApp, error in
+                    if let runningApp = runningApp {
+                        DispatchQueue.main.async {
+                            runningApp.activate()
+                        }
+                    }
+                }
                 return
             }
         }

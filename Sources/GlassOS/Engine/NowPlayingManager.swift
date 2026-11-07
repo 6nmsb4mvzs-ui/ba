@@ -31,6 +31,7 @@ class NowPlayingManager: ObservableObject {
 
     private var timer: Timer?
     private var playbackTimer: Timer?
+    private var positionTimer: Timer?
     private var elapsedTimeBase: Double = 0
     private var elapsedTimestamp: Date = Date()
     private var mrHandle: UnsafeMutableRawPointer?
@@ -58,6 +59,7 @@ class NowPlayingManager: ObservableObject {
         setupNotifications()
         startPolling()
         startPlaybackTimer()
+        startPositionPolling()
     }
 
     // MARK: - Notifications
@@ -396,7 +398,7 @@ class NowPlayingManager: ObservableObject {
                             if player state is paused then set playState to "0"
                             set pos to player position
                             set dur to duration of current track
-                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & pos & "||" & dur
+                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & (pos as text) & "||" & (dur as text)
                         end if
                     end try
                 end tell
@@ -429,7 +431,7 @@ class NowPlayingManager: ObservableObject {
                         if player state is paused then set playState to "0"
                         set pos to player position
                         set dur to (duration of current track) / 1000
-                        return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & pos & "||" & dur
+                        return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & (pos as text) & "||" & (dur as text)
                     end if
                 end try
             end tell
@@ -540,9 +542,78 @@ class NowPlayingManager: ObservableObject {
     }
 
     private func startPlaybackTimer() {
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self = self, self.isPlaying else { return }
-            self.elapsedTime = self.elapsedTimeBase + Date().timeIntervalSince(self.elapsedTimestamp)
+            let elapsed = self.elapsedTimeBase + Date().timeIntervalSince(self.elapsedTimestamp)
+            if self.duration > 0 && elapsed <= self.duration {
+                self.elapsedTime = elapsed
+            }
+        }
+    }
+
+    private func startPositionPolling() {
+        positionTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.syncPlaybackPosition()
+        }
+    }
+
+    private func syncPlaybackPosition() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let musicRunning = NSWorkspace.shared.runningApplications.contains {
+                $0.bundleIdentifier == "com.apple.Music"
+            }
+            let spotifyRunning = NSWorkspace.shared.runningApplications.contains {
+                $0.bundleIdentifier == "com.spotify.client"
+            }
+            guard musicRunning || spotifyRunning else { return }
+
+            let src: String
+            if musicRunning {
+                src = """
+                tell application "Music"
+                    try
+                        set pos to player position
+                        set dur to duration of current track
+                        set playState to "1"
+                        if player state is paused then set playState to "0"
+                        return (pos as text) & "||" & (dur as text) & "||" & playState
+                    end try
+                end tell
+                return ""
+                """
+            } else {
+                src = """
+                tell application "Spotify"
+                    try
+                        set pos to player position
+                        set dur to (duration of current track) / 1000
+                        set playState to "1"
+                        if player state is paused then set playState to "0"
+                        return (pos as text) & "||" & (dur as text) & "||" & playState
+                    end try
+                end tell
+                return ""
+                """
+            }
+
+            let script = NSAppleScript(source: src)
+            var error: NSDictionary?
+            guard let result = script?.executeAndReturnError(&error),
+                  let text = result.stringValue, !text.isEmpty else { return }
+
+            let parts = text.components(separatedBy: "||")
+            guard parts.count >= 3,
+                  let pos = Double(parts[0]),
+                  let dur = Double(parts[1]) else { return }
+            let playing = parts[2] == "1"
+
+            DispatchQueue.main.async {
+                self?.elapsedTime = pos
+                self?.duration = dur
+                self?.isPlaying = playing
+                self?.elapsedTimeBase = pos
+                self?.elapsedTimestamp = Date()
+            }
         }
     }
 

@@ -277,10 +277,10 @@ struct AppLauncherOverlayView: View {
         let iconColor = DockAppsManager.adaptiveColor(for: wallpaperManager.currentWallpaper)
 
         GlassWidgetCard {
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: min(dockApps.apps.count, 7))
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: min(dockApps.apps.count, 8))
 
             LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(dockApps.apps.prefix(7)) { app in
+                ForEach(dockApps.apps) { app in
                     Button(action: { dockApps.launch(app) }) {
                         VStack(spacing: 3) {
                             Image(systemName: app.symbolName)
@@ -500,22 +500,6 @@ struct GlassWidgetCard<Content: View>: View {
 
     var body: some View {
         content
-            .overlay(alignment: .top) {
-                HStack(spacing: 3) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        Circle()
-                            .fill(Color.white.opacity(0.15))
-                            .frame(width: 3, height: 3)
-                    }
-                }
-                .padding(.top, 3)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 7))
-                    .foregroundColor(.white.opacity(0.12))
-                    .padding(3)
-            }
     }
 }
 
@@ -574,30 +558,5 @@ class ScrollWheelNSView: NSView {
 class WidgetHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         return true
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        let loc = convert(event.locationInWindow, from: nil)
-
-        if loc.y > bounds.height - 14 {
-            window?.performDrag(with: event)
-            (window as? OverlayPanel)?.saveFrame()
-            return
-        }
-
-        if loc.x > bounds.width - 16 && loc.y < 16 {
-            (window as? OverlayPanel)?.handleResize(with: event)
-            return
-        }
-
-        super.mouseDown(with: event)
-    }
-
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        let dragRect = NSRect(x: 0, y: bounds.height - 14, width: bounds.width, height: 14)
-        addCursorRect(dragRect, cursor: .openHand)
-        let resizeRect = NSRect(x: bounds.width - 16, y: 0, width: 16, height: 16)
-        addCursorRect(resizeRect, cursor: .crosshair)
     }
 }

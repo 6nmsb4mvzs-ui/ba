@@ -10,6 +10,7 @@ struct MainContentView: View {
         case wallpapers = "Wallpapers"
         case glassify = "Glassify"
         case monitor = "System Monitor"
+        case positioning = "Positioning"
         case settings = "Settings"
         case updates = "Updates"
     }
@@ -110,6 +111,8 @@ struct MainContentView: View {
                 GlassifyView()
             case .monitor:
                 SystemMonitorView()
+            case .positioning:
+                PositioningLaunchView()
             case .settings:
                 SettingsView()
                     .environmentObject(wallpaperManager)
@@ -127,6 +130,7 @@ struct MainContentView: View {
         case .wallpapers: return "photo.on.rectangle.angled"
         case .glassify: return "wand.and.stars"
         case .monitor: return "gauge.with.dots.needle.33percent"
+        case .positioning: return "arrow.up.and.down.and.arrow.left.and.right"
         case .settings: return "gearshape"
         case .updates: return "arrow.triangle.2.circlepath"
         }
