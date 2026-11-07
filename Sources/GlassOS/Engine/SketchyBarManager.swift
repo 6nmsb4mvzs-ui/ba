@@ -144,13 +144,28 @@ class SketchyBarManager: ObservableObject {
         }
     }
 
+    private func brewPath() -> String {
+        if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/brew") {
+            return "/opt/homebrew/bin/brew"
+        }
+        return "/usr/local/bin/brew"
+    }
+
+    private func sketchyBarPath() -> String {
+        if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/sketchybar") {
+            return "/opt/homebrew/bin/sketchybar"
+        }
+        return "/usr/local/bin/sketchybar"
+    }
+
     func installSketchyBar() {
         guard !isInstalled else { return }
         installProgress = "Installing via Homebrew..."
+        let brew = brewPath()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            proc.arguments = ["-c", "brew install FelixKratz/formulae/sketchybar"]
+            proc.executableURL = URL(fileURLWithPath: brew)
+            proc.arguments = ["install", "FelixKratz/formulae/sketchybar"]
             let pipe = Pipe()
             proc.standardOutput = pipe
             proc.standardError = pipe
@@ -176,10 +191,11 @@ class SketchyBarManager: ObservableObject {
 
     func startSketchyBar() {
         writeConfig()
+        let brew = brewPath()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            proc.arguments = ["-c", "brew services start sketchybar"]
+            proc.executableURL = URL(fileURLWithPath: brew)
+            proc.arguments = ["services", "start", "sketchybar"]
             try? proc.run()
             proc.waitUntilExit()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -191,8 +207,8 @@ class SketchyBarManager: ObservableObject {
     func stopSketchyBar() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            proc.arguments = ["-c", "brew services stop sketchybar"]
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            proc.arguments = ["sketchybar"]
             try? proc.run()
             proc.waitUntilExit()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -204,11 +220,19 @@ class SketchyBarManager: ObservableObject {
     func restartSketchyBar() {
         writeConfig()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            proc.arguments = ["-c", "brew services restart sketchybar"]
-            try? proc.run()
-            proc.waitUntilExit()
+            let kill = Process()
+            kill.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            kill.arguments = ["sketchybar"]
+            try? kill.run()
+            kill.waitUntilExit()
+
+            Thread.sleep(forTimeInterval: 0.5)
+
+            let sketchybar = self?.sketchyBarPath() ?? "/opt/homebrew/bin/sketchybar"
+            let start = Process()
+            start.executableURL = URL(fileURLWithPath: sketchybar)
+            try? start.run()
+
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 self?.checkRunning()
             }
@@ -218,10 +242,11 @@ class SketchyBarManager: ObservableObject {
     func applyLive() {
         guard isRunning else { return }
         let barCmd = buildBarCommand()
+        let sketchybar = sketchyBarPath()
         DispatchQueue.global(qos: .userInitiated).async {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            proc.arguments = ["-c", barCmd]
+            proc.arguments = ["-c", "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; " + barCmd]
             try? proc.run()
             proc.waitUntilExit()
         }
@@ -231,7 +256,7 @@ class SketchyBarManager: ObservableObject {
             DispatchQueue.global(qos: .userInitiated).async {
                 let proc = Process()
                 proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                proc.arguments = ["-c", widgetCmd]
+                proc.arguments = ["-c", "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; " + widgetCmd]
                 try? proc.run()
                 proc.waitUntilExit()
             }
@@ -309,6 +334,8 @@ class SketchyBarManager: ObservableObject {
         try? FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
 
         var script = "#!/bin/bash\n\n"
+        script += "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH\n"
+        script += "PLUGIN_DIR=\"$HOME/.config/sketchybar/plugins\"\n\n"
         script += buildBarCommand() + "\n\n"
 
         for widget in widgets where widget.enabled {
@@ -332,6 +359,7 @@ class SketchyBarManager: ObservableObject {
 
     func exportConfig() -> String {
         var script = "#!/bin/bash\n# GlassOS SketchyBar Configuration\n\n"
+        script += "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH\n\n"
         script += buildBarCommand() + "\n\n"
         for widget in widgets where widget.enabled {
             script += buildWidgetAddCommand(widget) + "\n"
