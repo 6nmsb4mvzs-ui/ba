@@ -43,6 +43,30 @@ class NowPlayingManager: ObservableObject {
         startPolling()
     }
 
+    // MARK: - Run AppleScript via osascript subprocess (thread-safe, unlike NSAppleScript)
+
+    private func runOsascript(_ source: String) -> String? {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", source]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = Pipe()
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard proc.terminationStatus == 0 else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isAppRunning(_ bundleID: String) -> Bool {
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
+    }
+
     // MARK: - MediaRemote (only for sending playback commands)
 
     private func loadMediaRemoteCommands() {
@@ -53,7 +77,7 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    // MARK: - Single polling loop (the only source of truth)
+    // MARK: - Single polling loop
 
     private func startPolling() {
         poll()
@@ -66,16 +90,9 @@ class NowPlayingManager: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
-            let musicRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.apple.Music"
-            }
-            let spotifyRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.spotify.client"
-            }
-
-            if musicRunning {
+            if self.isAppRunning("com.apple.Music") {
                 self.pollMusic()
-            } else if spotifyRunning {
+            } else if self.isAppRunning("com.spotify.client") {
                 self.pollSpotify()
             } else {
                 DispatchQueue.main.async {
@@ -92,7 +109,7 @@ class NowPlayingManager: ObservableObject {
     }
 
     private func pollMusic() {
-        let src = """
+        let script = """
         tell application "Music"
             try
                 set trackName to name of current track
@@ -103,23 +120,21 @@ class NowPlayingManager: ObservableObject {
                 if player state is stopped then set playState to "stopped"
                 set pos to player position
                 set dur to duration of current track
-                set sep to "<<SEP>>"
-                return trackName & sep & trackArtist & sep & trackAlbum & sep & playState & sep & (pos as text) & sep & (dur as text)
+                set d to ASCII character 31
+                return trackName & d & trackArtist & d & trackAlbum & d & playState & d & (pos as text) & d & (dur as text)
             end try
         end tell
         return ""
         """
-        let script = NSAppleScript(source: src)
-        var error: NSDictionary?
-        guard let result = script?.executeAndReturnError(&error),
-              let text = result.stringValue, !text.isEmpty else {
+        guard let text = runOsascript(script), !text.isEmpty else {
             DispatchQueue.main.async { [weak self] in
                 self?.isPlaying = false
             }
             return
         }
 
-        let parts = text.components(separatedBy: "<<SEP>>")
+        let sep = String(Character(UnicodeScalar(31)))
+        let parts = text.components(separatedBy: sep)
         guard parts.count >= 6 else { return }
 
         let newTitle = parts[0]
@@ -130,7 +145,9 @@ class NowPlayingManager: ObservableObject {
         let dur = Double(parts[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
 
         let trackKey = "\(newTitle)|\(newArtist)|\(newAlbum)"
-        let titleChanged = newTitle != self.title || newArtist != self.artist
+        let oldTitle = self.title
+        let oldArtist = self.artist
+        let titleChanged = newTitle != oldTitle || newArtist != oldArtist
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -144,7 +161,7 @@ class NowPlayingManager: ObservableObject {
 
         if titleChanged && !newTitle.isEmpty {
             fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
-            fetchLyrics()
+            fetchLyrics(title: newTitle, artist: newArtist)
             fetchNextUp()
         } else if self.artwork == nil && !newTitle.isEmpty && trackKey != lastArtworkKey {
             fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
@@ -152,7 +169,7 @@ class NowPlayingManager: ObservableObject {
     }
 
     private func pollSpotify() {
-        let src = """
+        let script = """
         tell application "Spotify"
             try
                 set trackName to name of current track
@@ -163,23 +180,21 @@ class NowPlayingManager: ObservableObject {
                 set pos to player position
                 set dur to (duration of current track) / 1000
                 set artURL to artwork url of current track
-                set sep to "<<SEP>>"
-                return trackName & sep & trackArtist & sep & trackAlbum & sep & playState & sep & (pos as text) & sep & (dur as text) & sep & artURL
+                set d to ASCII character 31
+                return trackName & d & trackArtist & d & trackAlbum & d & playState & d & (pos as text) & d & (dur as text) & d & artURL
             end try
         end tell
         return ""
         """
-        let script = NSAppleScript(source: src)
-        var error: NSDictionary?
-        guard let result = script?.executeAndReturnError(&error),
-              let text = result.stringValue, !text.isEmpty else {
+        guard let text = runOsascript(script), !text.isEmpty else {
             DispatchQueue.main.async { [weak self] in
                 self?.isPlaying = false
             }
             return
         }
 
-        let parts = text.components(separatedBy: "<<SEP>>")
+        let sep = String(Character(UnicodeScalar(31)))
+        let parts = text.components(separatedBy: sep)
         guard parts.count >= 6 else { return }
 
         let newTitle = parts[0]
@@ -191,7 +206,9 @@ class NowPlayingManager: ObservableObject {
         let artURL = parts.count >= 7 ? parts[6] : ""
 
         let trackKey = "\(newTitle)|\(newArtist)|\(newAlbum)"
-        let titleChanged = newTitle != self.title || newArtist != self.artist
+        let oldTitle = self.title
+        let oldArtist = self.artist
+        let titleChanged = newTitle != oldTitle || newArtist != oldArtist
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -277,15 +294,9 @@ class NowPlayingManager: ObservableObject {
 
     // MARK: - Lyrics
 
-    private func fetchLyrics() {
-        let currentTitle = self.title
-        let currentArtist = self.artist
-
+    private func fetchLyrics(title: String, artist: String) {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let musicRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.apple.Music"
-            }
-            guard musicRunning else {
+            guard let self = self, self.isAppRunning("com.apple.Music") else {
                 DispatchQueue.main.async {
                     self?.lyrics = ""
                     self?.timedLyrics = []
@@ -293,7 +304,7 @@ class NowPlayingManager: ObservableObject {
                 return
             }
 
-            let script = NSAppleScript(source: """
+            let script = """
             tell application "Music"
                 try
                     set theLyrics to lyrics of current track
@@ -303,15 +314,13 @@ class NowPlayingManager: ObservableObject {
                 end try
             end tell
             return ""
-            """)
-            var error: NSDictionary?
-            let result = script?.executeAndReturnError(&error)
-            let text = result?.stringValue ?? ""
+            """
+            let text = self.runOsascript(script) ?? ""
 
             if text.isEmpty {
-                self?.fetchLyricsFromLRCLIB(title: currentTitle, artist: currentArtist)
+                self.fetchLyricsFromLRCLIB(title: title, artist: artist)
             } else {
-                self?.parseLyrics(text)
+                self.parseLyrics(text)
             }
         }
     }
@@ -386,7 +395,10 @@ class NowPlayingManager: ObservableObject {
         if let send = _sendCommand {
             _ = send(UInt32(2), nil)
         } else {
-            sendAppleScriptCommand("playpause")
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let app = self?.isAppRunning("com.apple.Music") == true ? "Music" : "Spotify"
+                _ = self?.runOsascript("tell application \"\(app)\" to playpause")
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.poll()
@@ -397,7 +409,10 @@ class NowPlayingManager: ObservableObject {
         if let send = _sendCommand {
             _ = send(UInt32(4), nil)
         } else {
-            sendAppleScriptCommand("next track")
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let app = self?.isAppRunning("com.apple.Music") == true ? "Music" : "Spotify"
+                _ = self?.runOsascript("tell application \"\(app)\" to next track")
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.poll()
@@ -408,7 +423,10 @@ class NowPlayingManager: ObservableObject {
         if let send = _sendCommand {
             _ = send(UInt32(5), nil)
         } else {
-            sendAppleScriptCommand("previous track")
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let app = self?.isAppRunning("com.apple.Music") == true ? "Music" : "Spotify"
+                _ = self?.runOsascript("tell application \"\(app)\" to previous track")
+            }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.poll()
@@ -425,29 +443,16 @@ class NowPlayingManager: ObservableObject {
         repeatMode = (repeatMode + 1) % 3
     }
 
-    private func sendAppleScriptCommand(_ command: String) {
-        let musicRunning = NSWorkspace.shared.runningApplications.contains {
-            $0.bundleIdentifier == "com.apple.Music"
-        }
-        let app = musicRunning ? "Music" : "Spotify"
-        let script = NSAppleScript(source: "tell application \"\(app)\" to \(command)")
-        var error: NSDictionary?
-        script?.executeAndReturnError(&error)
-    }
-
     // MARK: - Next Up Queue
 
     func fetchNextUp() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let musicRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.apple.Music"
-            }
-            guard musicRunning else {
+            guard let self = self, self.isAppRunning("com.apple.Music") else {
                 DispatchQueue.main.async { self?.nextUp = [] }
                 return
             }
 
-            let script = NSAppleScript(source: """
+            let script = """
             tell application "Music"
                 try
                     set output to ""
@@ -464,10 +469,8 @@ class NowPlayingManager: ObservableObject {
                 end try
             end tell
             return ""
-            """)
-            var error: NSDictionary?
-            let result = script?.executeAndReturnError(&error)
-            let text = result?.stringValue ?? ""
+            """
+            let text = self.runOsascript(script) ?? ""
 
             var tracks: [NextUpTrack] = []
             for line in text.components(separatedBy: "\n") where !line.isEmpty {
@@ -476,7 +479,7 @@ class NowPlayingManager: ObservableObject {
                     tracks.append(NextUpTrack(title: parts[0], artist: parts[1]))
                 }
             }
-            DispatchQueue.main.async { self?.nextUp = tracks }
+            DispatchQueue.main.async { self.nextUp = tracks }
         }
     }
 }
