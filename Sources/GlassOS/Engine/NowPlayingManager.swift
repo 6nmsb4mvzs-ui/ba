@@ -7,35 +7,27 @@ struct TimedLyricLine: Identifiable {
     let text: String
 }
 
-struct NextUpTrack: Identifiable {
-    let id = UUID()
-    let title: String
-    let artist: String
-}
-
 class NowPlayingManager: ObservableObject {
     static let shared = NowPlayingManager()
 
-    @Published var title: String = ""
-    @Published var artist: String = ""
-    @Published var album: String = ""
+    @Published var title = ""
+    @Published var artist = ""
+    @Published var album = ""
     @Published var artwork: NSImage?
-    @Published var isPlaying: Bool = false
-    @Published var lyrics: String = ""
+    @Published var isPlaying = false
+    @Published var lyrics = ""
     @Published var timedLyrics: [TimedLyricLine] = []
     @Published var elapsedTime: Double = 0
     @Published var duration: Double = 0
-    @Published var shuffleOn: Bool = false
-    @Published var repeatMode: Int = 0
-    @Published var nextUp: [NextUpTrack] = []
+    @Published var shuffleOn = false
+    @Published var repeatMode = 0
 
     private var pollTimer: Timer?
     private var interpTimer: Timer?
     private var lastPollPosition: Double = 0
-    private var lastPollTime: Date = Date()
+    private var lastPollTime = Date()
+    private var lastTrackKey = ""
     private var artworkCache: [String: NSImage] = [:]
-    private var lastArtworkKey: String = ""
-    private var fetchingArtwork = false
 
     private typealias MRSendCommand = @convention(c) (UInt32, UnsafeRawPointer?) -> Bool
     private var _sendCommand: MRSendCommand?
@@ -44,10 +36,9 @@ class NowPlayingManager: ObservableObject {
     private init() {
         loadMediaRemoteCommands()
         startPolling()
-        startInterpolation()
     }
 
-    // MARK: - Run AppleScript via osascript subprocess (thread-safe)
+    // MARK: - Subprocess helpers
 
     private func runOsascript(_ source: String) -> String? {
         let proc = Process()
@@ -56,12 +47,7 @@ class NowPlayingManager: ObservableObject {
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = Pipe()
-        do {
-            try proc.run()
-            proc.waitUntilExit()
-        } catch {
-            return nil
-        }
+        do { try proc.run(); proc.waitUntilExit() } catch { return nil }
         guard proc.terminationStatus == 0 else { return nil }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -74,12 +60,7 @@ class NowPlayingManager: ObservableObject {
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = Pipe()
-        do {
-            try proc.run()
-            proc.waitUntilExit()
-        } catch {
-            return nil
-        }
+        do { try proc.run(); proc.waitUntilExit() } catch { return nil }
         guard proc.terminationStatus == 0 else { return nil }
         return pipe.fileHandleForReading.readDataToEndOfFile()
     }
@@ -88,7 +69,7 @@ class NowPlayingManager: ObservableObject {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
     }
 
-    // MARK: - MediaRemote (only for sending playback commands)
+    // MARK: - MediaRemote
 
     private func loadMediaRemoteCommands() {
         guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY) else { return }
@@ -98,20 +79,17 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    // MARK: - Polling + smooth interpolation
+    // MARK: - Polling + Interpolation
 
     private func startPolling() {
         poll()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.poll()
         }
-    }
-
-    private func startInterpolation() {
         interpTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            guard let self = self, self.isPlaying else { return }
+            guard let self = self, self.isPlaying, self.duration > 0 else { return }
             let elapsed = self.lastPollPosition + Date().timeIntervalSince(self.lastPollTime)
-            if self.duration > 0 && elapsed <= self.duration {
+            if elapsed <= self.duration {
                 self.elapsedTime = elapsed
             }
         }
@@ -120,11 +98,10 @@ class NowPlayingManager: ObservableObject {
     private func poll() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-
-            if self.isAppRunning("com.apple.Music") {
-                self.pollMusic()
-            } else if self.isAppRunning("com.spotify.client") {
+            if self.isAppRunning("com.spotify.client") {
                 self.pollSpotify()
+            } else if self.isAppRunning("com.apple.Music") {
+                self.pollMusic()
             } else {
                 DispatchQueue.main.async {
                     self.title = ""
@@ -134,6 +111,8 @@ class NowPlayingManager: ObservableObject {
                     self.elapsedTime = 0
                     self.duration = 0
                     self.artwork = nil
+                    self.lyrics = ""
+                    self.timedLyrics = []
                 }
             }
         }
@@ -151,16 +130,16 @@ class NowPlayingManager: ObservableObject {
                 if player state is stopped then set playState to "stopped"
                 set pos to player position
                 set dur to duration of current track
-                set d to ASCII character 31
-                return trackName & d & trackArtist & d & trackAlbum & d & playState & d & (pos as text) & d & (dur as text)
+                set posI to ((pos * 1000) as integer)
+                set durI to ((dur * 1000) as integer)
+                set d to (ASCII character 31)
+                return trackName & d & trackArtist & d & trackAlbum & d & playState & d & (posI as text) & d & (durI as text)
             end try
         end tell
         return ""
         """
         guard let text = runOsascript(script), !text.isEmpty else {
-            DispatchQueue.main.async { [weak self] in
-                self?.isPlaying = false
-            }
+            DispatchQueue.main.async { [weak self] in self?.isPlaying = false }
             return
         }
 
@@ -172,32 +151,33 @@ class NowPlayingManager: ObservableObject {
         let newArtist = parts[1]
         let newAlbum = parts[2]
         let state = parts[3]
-        let pos = Double(parts[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-        let dur = Double(parts[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-
-        let trackKey = "\(newTitle)|\(newArtist)|\(newAlbum)"
-        let oldTitle = self.title
-        let oldArtist = self.artist
-        let titleChanged = newTitle != oldTitle || newArtist != oldArtist
+        let pos = (Double(parts[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) / 1000.0
+        let dur = (Double(parts[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) / 1000.0
+        let trackKey = "\(newTitle)|\(newArtist)"
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            let trackChanged = trackKey != self.lastTrackKey && !newTitle.isEmpty
+
             self.title = newTitle
             self.artist = newArtist
             self.album = newAlbum
             self.isPlaying = (state == "playing")
-            self.elapsedTime = pos
             self.duration = dur
+            self.elapsedTime = pos
             self.lastPollPosition = pos
             self.lastPollTime = Date()
-        }
 
-        if titleChanged && !newTitle.isEmpty {
-            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
-            fetchLyrics(title: newTitle, artist: newArtist)
-            fetchNextUp()
-        } else if self.artwork == nil && !newTitle.isEmpty && trackKey != lastArtworkKey {
-            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
+            if trackChanged {
+                self.lastTrackKey = trackKey
+                self.artwork = nil
+                self.lyrics = ""
+                self.timedLyrics = []
+                self.fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
+                self.fetchLyrics(title: newTitle, artist: newArtist)
+            } else if self.artwork == nil && !newTitle.isEmpty {
+                self.fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
+            }
         }
     }
 
@@ -211,18 +191,17 @@ class NowPlayingManager: ObservableObject {
                 set playState to "playing"
                 if player state is paused then set playState to "paused"
                 set pos to player position
-                set dur to (duration of current track) / 1000
+                set dur to (duration of current track)
+                set posI to ((pos * 1000) as integer)
                 set artURL to artwork url of current track
-                set d to ASCII character 31
-                return trackName & d & trackArtist & d & trackAlbum & d & playState & d & (pos as text) & d & (dur as text) & d & artURL
+                set d to (ASCII character 31)
+                return trackName & d & trackArtist & d & trackAlbum & d & playState & d & (posI as text) & d & (dur as text) & d & artURL
             end try
         end tell
         return ""
         """
         guard let text = runOsascript(script), !text.isEmpty else {
-            DispatchQueue.main.async { [weak self] in
-                self?.isPlaying = false
-            }
+            DispatchQueue.main.async { [weak self] in self?.isPlaying = false }
             return
         }
 
@@ -234,33 +213,34 @@ class NowPlayingManager: ObservableObject {
         let newArtist = parts[1]
         let newAlbum = parts[2]
         let state = parts[3]
-        let pos = Double(parts[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-        let dur = Double(parts[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let pos = (Double(parts[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) / 1000.0
+        let dur = (Double(parts[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) / 1000.0
         let artURL = parts.count >= 7 ? parts[6] : ""
-
-        let trackKey = "\(newTitle)|\(newArtist)|\(newAlbum)"
-        let oldTitle = self.title
-        let oldArtist = self.artist
-        let titleChanged = newTitle != oldTitle || newArtist != oldArtist
+        let trackKey = "\(newTitle)|\(newArtist)"
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            let trackChanged = trackKey != self.lastTrackKey && !newTitle.isEmpty
+
             self.title = newTitle
             self.artist = newArtist
             self.album = newAlbum
             self.isPlaying = (state == "playing")
-            self.elapsedTime = pos
             self.duration = dur
+            self.elapsedTime = pos
             self.lastPollPosition = pos
             self.lastPollTime = Date()
-            self.lyrics = ""
-            self.timedLyrics = []
-        }
 
-        if titleChanged && !newTitle.isEmpty {
-            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "spotify", spotifyURL: artURL)
-        } else if self.artwork == nil && !newTitle.isEmpty && trackKey != lastArtworkKey {
-            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "spotify", spotifyURL: artURL)
+            if trackChanged {
+                self.lastTrackKey = trackKey
+                self.artwork = nil
+                self.lyrics = ""
+                self.timedLyrics = []
+                self.fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "spotify", spotifyURL: artURL)
+                self.fetchLyrics(title: newTitle, artist: newArtist)
+            } else if self.artwork == nil && !newTitle.isEmpty {
+                self.fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "spotify", spotifyURL: artURL)
+            }
         }
     }
 
@@ -268,48 +248,38 @@ class NowPlayingManager: ObservableObject {
 
     private func fetchArtworkForTrack(title: String, artist: String, album: String, trackKey: String, provider: String, spotifyURL: String = "") {
         if let cached = artworkCache[trackKey] {
-            lastArtworkKey = trackKey
-            DispatchQueue.main.async { [weak self] in self?.artwork = cached }
+            artwork = cached
             return
         }
 
-        guard !fetchingArtwork else { return }
-        fetchingArtwork = true
-
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            defer { self?.fetchingArtwork = false }
-
+            guard let self = self else { return }
             var image: NSImage?
 
-            // Spotify: direct CDN URL via curl
             if provider == "spotify", !spotifyURL.isEmpty {
-                if let data = self?.runCurl(spotifyURL), !data.isEmpty,
-                   let img = NSImage(data: data) {
-                    image = img
-                }
+                if let data = self.runCurl(spotifyURL), !data.isEmpty,
+                   let img = NSImage(data: data) { image = img }
             }
 
-            // iTunes Search API via curl
             if image == nil {
-                image = self?.fetchArtworkViaiTunes(title: title, artist: artist)
+                image = self.fetchArtworkViaiTunes(title: title, artist: artist)
             }
 
-            // Last resort for Apple Music: write artwork to temp file via osascript
             if image == nil && provider == "music" {
-                image = self?.fetchArtworkViaOsascriptFile()
+                image = self.fetchArtworkViaOsascriptFile()
             }
 
             guard let finalImage = image else { return }
 
-            self?.artworkCache[trackKey] = finalImage
-            if self?.artworkCache.count ?? 0 > 50 {
-                self?.artworkCache.removeAll()
-                self?.artworkCache[trackKey] = finalImage
-            }
-
-            self?.lastArtworkKey = trackKey
-            DispatchQueue.main.async { [weak self] in
-                self?.artwork = finalImage
+            DispatchQueue.main.async {
+                self.artworkCache[trackKey] = finalImage
+                if self.artworkCache.count > 50 {
+                    self.artworkCache.removeAll()
+                    self.artworkCache[trackKey] = finalImage
+                }
+                if self.lastTrackKey == trackKey {
+                    self.artwork = finalImage
+                }
             }
         }
     }
@@ -354,21 +324,13 @@ class NowPlayingManager: ObservableObject {
         return ""
         """
         guard let result = runOsascript(script), !result.isEmpty else { return nil }
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: tmpPath)),
-              !data.isEmpty else { return nil }
-
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: tmpPath)), !data.isEmpty else { return nil }
         try? FileManager.default.removeItem(atPath: tmpPath)
 
-        if let img = NSImage(data: data) {
-            return img
-        }
-
-        // Raw artwork data might have a PICT/JFIF header offset — try skipping first few bytes
-        for offset in [0, 2, 4, 6] where offset < data.count {
+        if let img = NSImage(data: data) { return img }
+        for offset in [2, 4, 6] where offset < data.count {
             let slice = data.subdata(in: offset..<data.count)
-            if let img = NSImage(data: slice) {
-                return img
-            }
+            if let img = NSImage(data: slice) { return img }
         }
         return nil
     }
@@ -379,7 +341,6 @@ class NowPlayingManager: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self = self else { return }
 
-            // Try embedded lyrics from Music.app first
             if self.isAppRunning("com.apple.Music") {
                 let script = """
                 tell application "Music"
@@ -399,7 +360,6 @@ class NowPlayingManager: ObservableObject {
                 }
             }
 
-            // Fallback: LRCLIB for synced lyrics
             self.fetchLyricsFromLRCLIB(title: title, artist: artist)
         }
     }
@@ -520,45 +480,5 @@ class NowPlayingManager: ObservableObject {
     func toggleRepeat() {
         if let send = _sendCommand { _ = send(UInt32(7), nil) }
         repeatMode = (repeatMode + 1) % 3
-    }
-
-    // MARK: - Next Up Queue
-
-    func fetchNextUp() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self = self, self.isAppRunning("com.apple.Music") else {
-                DispatchQueue.main.async { self?.nextUp = [] }
-                return
-            }
-
-            let script = """
-            tell application "Music"
-                try
-                    set output to ""
-                    set idx to index of current track
-                    set pl to current playlist
-                    set totalTracks to count of tracks of pl
-                    set maxNext to idx + 5
-                    if maxNext > totalTracks then set maxNext to totalTracks
-                    repeat with i from (idx + 1) to maxNext
-                        set t to track i of pl
-                        set output to output & name of t & "||" & artist of t & return
-                    end repeat
-                    return output
-                end try
-            end tell
-            return ""
-            """
-            let text = self.runOsascript(script) ?? ""
-
-            var tracks: [NextUpTrack] = []
-            for line in text.components(separatedBy: "\n") where !line.isEmpty {
-                let parts = line.components(separatedBy: "||")
-                if parts.count >= 2 {
-                    tracks.append(NextUpTrack(title: parts[0], artist: parts[1]))
-                }
-            }
-            DispatchQueue.main.async { self.nextUp = tracks }
-        }
     }
 }
