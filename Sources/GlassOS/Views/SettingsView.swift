@@ -9,8 +9,41 @@ struct SettingsView: View {
     @AppStorage("hotkey_enabled") private var hotkeyEnabled = true
     @AppStorage("wallpaper_quality") private var wallpaperQuality = "High"
     @State private var showAllFonts = false
+    @State private var sketchyBarCleaned = false
 
     let qualities = ["Low", "Medium", "High", "Ultra"]
+
+    private var hasSketchyBarRemnants: Bool {
+        if sketchyBarCleaned { return false }
+        let configExists = FileManager.default.fileExists(
+            atPath: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".config/sketchybar").path)
+        let hasDefaults = UserDefaults.standard.data(forKey: "sketchybar_config") != nil
+            || UserDefaults.standard.data(forKey: "sketchybar_widgets") != nil
+        return configExists || hasDefaults
+    }
+
+    private func cleanSketchyBar() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let kill = Process()
+            kill.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            kill.arguments = ["sketchybar"]
+            kill.standardOutput = FileHandle.nullDevice
+            kill.standardError = FileHandle.nullDevice
+            try? kill.run()
+            kill.waitUntilExit()
+        }
+
+        let configDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/sketchybar")
+        try? FileManager.default.removeItem(at: configDir)
+
+        UserDefaults.standard.removeObject(forKey: "sketchybar_config")
+        UserDefaults.standard.removeObject(forKey: "sketchybar_widgets")
+        UserDefaults.standard.removeObject(forKey: "sketchybar_preset_version")
+
+        withAnimation { sketchyBarCleaned = true }
+    }
 
     var body: some View {
         ScrollView {
@@ -216,6 +249,36 @@ struct SettingsView: View {
                     }
                 }
                 .padding(.horizontal, 24)
+
+                if hasSketchyBarRemnants {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 0) {
+                            sectionHeader("Cleanup")
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Remove SketchyBar Data")
+                                        .foregroundColor(.white)
+                                    Text("Stops SketchyBar, removes config files and saved preferences")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.4))
+                                }
+                                Spacer()
+                                if sketchyBarCleaned {
+                                    Text("Removed")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.green)
+                                } else {
+                                    GlassButton("Remove", icon: "trash", color: .red) {
+                                        cleanSketchyBar()
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
 
                 GlassCard {
                     VStack(alignment: .leading, spacing: 0) {

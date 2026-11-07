@@ -9,7 +9,6 @@ struct MainContentView: View {
     enum SidebarTab: String, CaseIterable {
         case wallpapers = "Wallpapers"
         case glassify = "Glassify"
-        case sketchyBar = "SketchyBar"
         case monitor = "System Monitor"
         case positioning = "Positioning"
         case settings = "Settings"
@@ -110,8 +109,6 @@ struct MainContentView: View {
                     .environmentObject(wallpaperManager)
             case .glassify:
                 GlassifyView()
-            case .sketchyBar:
-                SketchyBarView()
             case .monitor:
                 SystemMonitorView()
             case .positioning:
@@ -132,7 +129,6 @@ struct MainContentView: View {
         switch tab {
         case .wallpapers: return "photo.on.rectangle.angled"
         case .glassify: return "wand.and.stars"
-        case .sketchyBar: return "menubar.rectangle"
         case .monitor: return "gauge.with.dots.needle.33percent"
         case .positioning: return "arrow.up.and.down.and.arrow.left.and.right"
         case .settings: return "gearshape"
