@@ -3,21 +3,21 @@ import Combine
 
 struct SketchyBarConfig: Codable, Equatable {
     var position: String = "top"
-    var height: Int = 40
+    var height: Int = 37
     var blurRadius: Int = 30
-    var barColor: String = "#000000"
-    var barOpacity: Double = 0.25
-    var cornerRadius: Int = 0
-    var borderColor: String = "#FFFFFF"
+    var barColor: String = "#1e1e2e"
+    var barOpacity: Double = 0.65
+    var cornerRadius: Int = 12
+    var borderColor: String = "#cdd6f4"
     var borderWidth: Int = 0
-    var margin: Int = 0
-    var yOffset: Int = 0
-    var shadow: Bool = false
+    var margin: Int = 8
+    var yOffset: Int = 6
+    var shadow: Bool = true
     var sticky: Bool = true
     var topmost: String = "window"
     var fontSmoothing: Bool = true
-    var padding_left: Int = 10
-    var padding_right: Int = 10
+    var padding_left: Int = 8
+    var padding_right: Int = 8
 }
 
 struct SketchyBarWidget: Identifiable, Codable, Equatable {
@@ -56,16 +56,16 @@ struct SketchyBarWidget: Identifiable, Codable, Equatable {
 
         var defaultIcon: String {
             switch self {
-            case .clock:     return "🕐"
-            case .battery:   return "🔋"
-            case .volume:    return "🔊"
-            case .cpu:       return "💻"
-            case .weather:   return "🌤"
-            case .frontApp:  return "🪟"
-            case .spaces:    return "🔲"
-            case .media:     return "🎵"
-            case .wifi:      return "📶"
-            case .separator: return "|"
+            case .clock:     return "◷"
+            case .battery:   return "▊"
+            case .volume:    return "♪"
+            case .cpu:       return "⊙"
+            case .weather:   return "☼"
+            case .frontApp:  return "◆"
+            case .spaces:    return "◻"
+            case .media:     return "♫"
+            case .wifi:      return "◎"
+            case .separator: return "│"
             }
         }
 
@@ -102,6 +102,8 @@ class SketchyBarManager: ObservableObject {
     private let defaults = UserDefaults.standard
     private let configKey = "sketchybar_config"
     private let widgetsKey = "sketchybar_widgets"
+    private let presetVersionKey = "sketchybar_preset_version"
+    private let currentPresetVersion = 2
     private var statusTimer: Timer?
 
     private init() {
@@ -292,13 +294,51 @@ class SketchyBarManager: ObservableObject {
 
     func addDefaultWidgets() {
         widgets = [
-            SketchyBarWidget(kind: .spaces, name: "Spaces", position: .left, iconName: "🔲"),
-            SketchyBarWidget(kind: .frontApp, name: "Front App", position: .left, iconName: "🪟"),
-            SketchyBarWidget(kind: .clock, name: "Clock", position: .right, iconName: "🕐", updateFrequency: 10),
-            SketchyBarWidget(kind: .battery, name: "Battery", position: .right, iconName: "🔋", updateFrequency: 120),
-            SketchyBarWidget(kind: .volume, name: "Volume", position: .right, iconName: "🔊"),
-            SketchyBarWidget(kind: .wifi, name: "WiFi", position: .right, iconName: "📶", updateFrequency: 5),
-            SketchyBarWidget(kind: .cpu, name: "CPU", position: .right, iconName: "💻", updateFrequency: 2),
+            SketchyBarWidget(kind: .frontApp, name: "Front App", position: .left,
+                             iconName: "◆", iconColor: "#89dceb", labelColor: "#cdd6f4",
+                             backgroundColor: "#1e1e2e", backgroundOpacity: 0.5,
+                             backgroundCornerRadius: 8, backgroundHeight: 28,
+                             fontFamily: "SF Pro", fontSize: 13, fontStyle: "Medium",
+                             paddingLeft: 6, paddingRight: 2, updateFrequency: 0),
+
+            SketchyBarWidget(kind: .separator, name: "Sep L", position: .left,
+                             iconName: "│", iconColor: "#585b70",
+                             paddingLeft: 2, paddingRight: 2),
+
+            SketchyBarWidget(kind: .clock, name: "Clock", position: .center,
+                             iconName: "◷", iconColor: "#89b4fa", labelColor: "#cdd6f4",
+                             backgroundColor: "#1e1e2e", backgroundOpacity: 0.5,
+                             backgroundCornerRadius: 8, backgroundHeight: 28,
+                             fontFamily: "SF Pro", fontSize: 13, fontStyle: "Bold",
+                             paddingLeft: 6, paddingRight: 6, updateFrequency: 1),
+
+            SketchyBarWidget(kind: .cpu, name: "CPU", position: .right,
+                             iconName: "⊙", iconColor: "#a6e3a1", labelColor: "#cdd6f4",
+                             backgroundColor: "#1e1e2e", backgroundOpacity: 0.4,
+                             backgroundCornerRadius: 8, backgroundHeight: 28,
+                             fontFamily: "SF Pro", fontSize: 12, fontStyle: "Regular",
+                             paddingLeft: 4, paddingRight: 4, updateFrequency: 3),
+
+            SketchyBarWidget(kind: .volume, name: "Volume", position: .right,
+                             iconName: "♪", iconColor: "#f9e2af", labelColor: "#cdd6f4",
+                             backgroundColor: "#1e1e2e", backgroundOpacity: 0.4,
+                             backgroundCornerRadius: 8, backgroundHeight: 28,
+                             fontFamily: "SF Pro", fontSize: 12, fontStyle: "Regular",
+                             paddingLeft: 4, paddingRight: 4, updateFrequency: 2),
+
+            SketchyBarWidget(kind: .wifi, name: "WiFi", position: .right,
+                             iconName: "◎", iconColor: "#94e2d5", labelColor: "#cdd6f4",
+                             backgroundColor: "#1e1e2e", backgroundOpacity: 0.4,
+                             backgroundCornerRadius: 8, backgroundHeight: 28,
+                             fontFamily: "SF Pro", fontSize: 12, fontStyle: "Regular",
+                             paddingLeft: 4, paddingRight: 4, updateFrequency: 10),
+
+            SketchyBarWidget(kind: .battery, name: "Battery", position: .right,
+                             iconName: "▊", iconColor: "#a6e3a1", labelColor: "#cdd6f4",
+                             backgroundColor: "#1e1e2e", backgroundOpacity: 0.4,
+                             backgroundCornerRadius: 8, backgroundHeight: 28,
+                             fontFamily: "SF Pro", fontSize: 12, fontStyle: "Regular",
+                             paddingLeft: 4, paddingRight: 4, updateFrequency: 60),
         ]
         save()
     }
@@ -313,6 +353,13 @@ class SketchyBarManager: ObservableObject {
     }
 
     private func loadSaved() {
+        let savedVersion = defaults.integer(forKey: presetVersionKey)
+        if savedVersion < currentPresetVersion {
+            config = SketchyBarConfig()
+            addDefaultWidgets()
+            defaults.set(currentPresetVersion, forKey: presetVersionKey)
+            return
+        }
         if let data = defaults.data(forKey: configKey),
            let saved = try? JSONDecoder().decode(SketchyBarConfig.self, from: data) {
             config = saved
@@ -442,9 +489,13 @@ class SketchyBarManager: ObservableObject {
             PERCENTAGE=$(pmset -g batt | grep -Eo "\\d+%" | cut -d% -f1)
             CHARGING=$(pmset -g batt | grep 'AC Power')
             if [ -n "$CHARGING" ]; then
-              ICON="⚡"
+              ICON="+"
+            elif [ "$PERCENTAGE" -gt 75 ]; then
+              ICON="▊"
+            elif [ "$PERCENTAGE" -gt 25 ]; then
+              ICON="▌"
             else
-              ICON="🔋"
+              ICON="▎"
             fi
             sketchybar --set $NAME icon="$ICON" label="${PERCENTAGE}%"
             """
@@ -452,7 +503,12 @@ class SketchyBarManager: ObservableObject {
             return """
             #!/bin/bash
             VOLUME=$(osascript -e 'output volume of (get volume settings)')
-            sketchybar --set $NAME label="${VOLUME}%"
+            MUTED=$(osascript -e 'output muted of (get volume settings)')
+            if [ "$MUTED" = "true" ]; then
+              sketchybar --set $NAME icon="×" label="mute"
+            else
+              sketchybar --set $NAME icon="♪" label="${VOLUME}%"
+            fi
             """
         case .cpu:
             return """
