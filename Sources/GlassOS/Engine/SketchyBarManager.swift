@@ -56,29 +56,29 @@ struct SketchyBarWidget: Identifiable, Codable, Equatable {
 
         var defaultIcon: String {
             switch self {
-            case .clock:    return "\u{e381}"
-            case .battery:  return "\u{e315}"
-            case .volume:   return "\u{e050}"
-            case .cpu:      return "\u{e1a0}"
-            case .weather:  return "\u{e2bd}"
-            case .frontApp: return "\u{e8d4}"
-            case .spaces:   return "\u{e8f8}"
-            case .media:    return "\u{e405}"
-            case .wifi:     return "\u{e63e}"
+            case .clock:     return "🕐"
+            case .battery:   return "🔋"
+            case .volume:    return "🔊"
+            case .cpu:       return "💻"
+            case .weather:   return "🌤"
+            case .frontApp:  return "🪟"
+            case .spaces:    return "🔲"
+            case .media:     return "🎵"
+            case .wifi:      return "📶"
             case .separator: return "|"
             }
         }
 
         var sfSymbol: String {
             switch self {
-            case .clock:     return "clock"
-            case .battery:   return "battery.75percent"
-            case .volume:    return "speaker.wave.2"
+            case .clock:     return "clock.fill"
+            case .battery:   return "battery.100"
+            case .volume:    return "speaker.wave.2.fill"
             case .cpu:       return "cpu"
-            case .weather:   return "cloud.sun"
-            case .frontApp:  return "macwindow"
+            case .weather:   return "cloud.sun.fill"
+            case .frontApp:  return "macwindow.on.rectangle"
             case .spaces:    return "square.grid.2x2"
-            case .media:     return "music.note"
+            case .media:     return "music.note.list"
             case .wifi:      return "wifi"
             case .separator: return "minus"
             }
@@ -292,13 +292,13 @@ class SketchyBarManager: ObservableObject {
 
     func addDefaultWidgets() {
         widgets = [
-            SketchyBarWidget(kind: .spaces, name: "Spaces", position: .left, iconName: " "),
-            SketchyBarWidget(kind: .frontApp, name: "Front App", position: .left, iconName: " "),
-            SketchyBarWidget(kind: .clock, name: "Clock", position: .right, iconName: "\u{e381}", updateFrequency: 10),
-            SketchyBarWidget(kind: .battery, name: "Battery", position: .right, iconName: "\u{e315}", updateFrequency: 120),
-            SketchyBarWidget(kind: .volume, name: "Volume", position: .right, iconName: "\u{e050}"),
-            SketchyBarWidget(kind: .wifi, name: "WiFi", position: .right, iconName: "\u{e63e}", updateFrequency: 5),
-            SketchyBarWidget(kind: .cpu, name: "CPU", position: .right, iconName: "\u{e1a0}", updateFrequency: 2),
+            SketchyBarWidget(kind: .spaces, name: "Spaces", position: .left, iconName: "🔲"),
+            SketchyBarWidget(kind: .frontApp, name: "Front App", position: .left, iconName: "🪟"),
+            SketchyBarWidget(kind: .clock, name: "Clock", position: .right, iconName: "🕐", updateFrequency: 10),
+            SketchyBarWidget(kind: .battery, name: "Battery", position: .right, iconName: "🔋", updateFrequency: 120),
+            SketchyBarWidget(kind: .volume, name: "Volume", position: .right, iconName: "🔊"),
+            SketchyBarWidget(kind: .wifi, name: "WiFi", position: .right, iconName: "📶", updateFrequency: 5),
+            SketchyBarWidget(kind: .cpu, name: "CPU", position: .right, iconName: "💻", updateFrequency: 2),
         ]
         save()
     }
