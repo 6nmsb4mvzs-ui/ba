@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 
 struct TimedLyricLine: Identifiable {
@@ -314,8 +315,54 @@ class NowPlayingManager: ObservableObject {
     }
 
     private func fetchMusicArtwork() {
+        // Approach 1: get artwork data directly via descriptor
+        let script1 = NSAppleScript(source: """
+        tell application "Music"
+            try
+                if player state is playing or player state is paused then
+                    set theTrack to current track
+                    if (count of artworks of theTrack) > 0 then
+                        return data of artwork 1 of theTrack
+                    end if
+                end if
+            end try
+        end tell
+        """)
+        var error1: NSDictionary?
+        if let result = script1?.executeAndReturnError(&error1) {
+            let artData = result.data
+            if !artData.isEmpty, let img = NSImage(data: artData) {
+                DispatchQueue.main.async { [weak self] in self?.artwork = img }
+                return
+            }
+        }
+
+        // Approach 2: get the track's file location and read embedded artwork
+        let script2 = NSAppleScript(source: """
+        tell application "Music"
+            try
+                if player state is playing or player state is paused then
+                    set theTrack to current track
+                    set loc to location of theTrack
+                    return POSIX path of loc
+                end if
+            end try
+        end tell
+        return ""
+        """)
+        var error2: NSDictionary?
+        if let result = script2?.executeAndReturnError(&error2),
+           let filePath = result.stringValue, !filePath.isEmpty {
+            let url = URL(fileURLWithPath: filePath)
+            if let img = extractArtworkFromFile(url) {
+                DispatchQueue.main.async { [weak self] in self?.artwork = img }
+                return
+            }
+        }
+
+        // Approach 3: temp file fallback
         let tmpPath = "/tmp/glassos_artwork.dat"
-        let script = NSAppleScript(source: """
+        let script3 = NSAppleScript(source: """
         tell application "Music"
             try
                 if player state is playing or player state is paused then
@@ -340,18 +387,25 @@ class NowPlayingManager: ObservableObject {
         end tell
         return ""
         """)
-        var error: NSDictionary?
-        guard let result = script?.executeAndReturnError(&error) else { return }
-        let path = result.stringValue ?? ""
-        guard !path.isEmpty else { return }
-
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              !data.isEmpty,
-              let img = NSImage(data: data) else { return }
-
-        DispatchQueue.main.async { [weak self] in
-            self?.artwork = img
+        var error3: NSDictionary?
+        if let result = script3?.executeAndReturnError(&error3),
+           let path = result.stringValue, !path.isEmpty,
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           !data.isEmpty, let img = NSImage(data: data) {
+            DispatchQueue.main.async { [weak self] in self?.artwork = img }
         }
+    }
+
+    private func extractArtworkFromFile(_ url: URL) -> NSImage? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let asset = AVAsset(url: url)
+        for item in asset.commonMetadata {
+            if item.commonKey == .commonKeyArtwork, let data = item.dataValue,
+               let img = NSImage(data: data) {
+                return img
+            }
+        }
+        return nil
     }
 
     private func fetchSpotifyArtwork() {

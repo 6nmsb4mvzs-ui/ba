@@ -34,10 +34,18 @@ class WidgetLayoutManager: ObservableObject {
     }
 
     func widgetSize(for key: String) -> CGSize {
+        if let d = UserDefaults.standard.dictionary(forKey: "widgetSize.\(key)"),
+           let w = d["w"] as? CGFloat, let h = d["h"] as? CGFloat {
+            return CGSize(width: w, height: h)
+        }
         guard let def = Self.widgetDefinitions.first(where: { $0.key == key }) else {
             return CGSize(width: 200, height: 200)
         }
         return CGSize(width: def.width, height: def.height)
+    }
+
+    func saveSize(_ size: CGSize, for key: String) {
+        UserDefaults.standard.set(["w": size.width, "h": size.height], forKey: "widgetSize.\(key)")
     }
 
     func savePosition(_ point: CGPoint, for key: String) {
@@ -55,6 +63,7 @@ class WidgetLayoutManager: ObservableObject {
     func resetAll() {
         for def in Self.widgetDefinitions {
             UserDefaults.standard.removeObject(forKey: "widgetPos.\(def.key)")
+            UserDefaults.standard.removeObject(forKey: "widgetSize.\(def.key)")
         }
         NotificationCenter.default.post(name: .init("WidgetLayoutDidChange"), object: nil)
     }

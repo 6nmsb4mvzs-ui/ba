@@ -42,7 +42,7 @@ struct PositioningLaunchView: View {
             }
             .buttonStyle(.plain)
 
-            Text("Return saves positions  ·  Esc cancels")
+            Text("Return saves  ·  Esc cancels  ·  ↑↓ resize")
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.35))
 
@@ -56,6 +56,7 @@ struct WidgetPositioningView: View {
     var closePanel: () -> Void
 
     @State private var tempPositions: [String: CGPoint] = [:]
+    @State private var tempSizes: [String: CGSize] = [:]
     @State private var selectedWidget: String?
     @State private var saved = false
     @State private var keyMonitor: Any?
@@ -93,10 +94,11 @@ struct WidgetPositioningView: View {
             x: geo.size.width * def.defaultNormX,
             y: geo.size.height * (1 - def.defaultNormY)
         )
+        let size = tempSizes[def.key] ?? CGSize(width: def.width, height: def.height)
 
         return WidgetPreview(
             label: def.label,
-            size: CGSize(width: def.width, height: def.height),
+            size: size,
             isSelected: selectedWidget == def.key
         )
         .position(pos)
@@ -104,14 +106,17 @@ struct WidgetPositioningView: View {
             DragGesture()
                 .onChanged { value in
                     selectedWidget = def.key
-                    let halfW = def.width / 2
-                    let halfH = def.height / 2
+                    let halfW = size.width / 2
+                    let halfH = size.height / 2
                     let newX = min(max(value.location.x, halfW), geo.size.width - halfW)
                     let newY = min(max(value.location.y, halfH), geo.size.height - halfH)
                     tempPositions[def.key] = CGPoint(x: newX, y: newY)
                 }
                 .onEnded { _ in }
         )
+        .onTapGesture {
+            selectedWidget = def.key
+        }
     }
 
     private var instructionBar: some View {
@@ -123,7 +128,7 @@ struct WidgetPositioningView: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.green)
                 } else {
-                    Text("Drag widgets to reposition")
+                    Text("Drag to move · ↑↓ to resize")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
                     keyHint("Return", "Save", .cyan)
@@ -166,6 +171,20 @@ struct WidgetPositioningView: View {
                     closePanel()
                 }
                 return nil
+            case 126: // Up arrow — scale up
+                if let key = selectedWidget {
+                    let current = tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
+                    tempSizes[key] = CGSize(width: current.width * 1.1, height: current.height * 1.1)
+                }
+                return nil
+            case 125: // Down arrow — scale down
+                if let key = selectedWidget {
+                    let current = tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
+                    let newW = max(current.width * 0.9, 60)
+                    let newH = max(current.height * 0.9, 40)
+                    tempSizes[key] = CGSize(width: newW, height: newH)
+                }
+                return nil
             default:
                 return event
             }
@@ -187,6 +206,7 @@ struct WidgetPositioningView: View {
                 x: screenSize.width * norm.x,
                 y: screenSize.height * (1 - norm.y)
             )
+            tempSizes[def.key] = layout.widgetSize(for: def.key)
         }
     }
 
@@ -197,6 +217,9 @@ struct WidgetPositioningView: View {
             let normX = pos.x / screenSize.width
             let normY = 1 - (pos.y / screenSize.height)
             layout.savePosition(CGPoint(x: normX, y: normY), for: def.key)
+            if let size = tempSizes[def.key] {
+                layout.saveSize(size, for: def.key)
+            }
         }
         NotificationCenter.default.post(name: .init("WidgetLayoutDidChange"), object: nil)
         saved = true

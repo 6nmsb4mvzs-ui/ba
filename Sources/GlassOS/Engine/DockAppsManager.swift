@@ -20,7 +20,7 @@ class DockAppsManager: ObservableObject {
         ("Discord",   "bubble.left.and.bubble.right", "com.hnc.Discord"),
         ("Soundgrab", "waveform",                     "com.soundgrab.Soundgrab"),
         ("PG3D",      "gamecontroller",               "com.pixel.gun3d"),
-        ("Modrinth",  "shippingbox",                  "com.modrinth.theseus"),
+        ("Modrinth App", "shippingbox",               "ModrinthApp"),
         ("GlassOS",   "sparkles.rectangle.stack",     Bundle.main.bundleIdentifier ?? "com.glassos.app"),
     ]
 
@@ -53,19 +53,42 @@ class DockAppsManager: ObservableObject {
             return
         }
 
+        let searchNames = [app.name]
         for dir in ["/Applications", NSHomeDirectory() + "/Applications"] {
-            let path = "\(dir)/\(app.name).app"
-            if FileManager.default.fileExists(atPath: path) {
-                let config = NSWorkspace.OpenConfiguration()
-                config.activates = true
-                NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config) { runningApp, error in
-                    if let runningApp = runningApp {
-                        DispatchQueue.main.async {
-                            runningApp.activate()
+            for name in searchNames {
+                let path = "\(dir)/\(name).app"
+                if FileManager.default.fileExists(atPath: path) {
+                    let config = NSWorkspace.OpenConfiguration()
+                    config.activates = true
+                    NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config) { runningApp, error in
+                        if let runningApp = runningApp {
+                            DispatchQueue.main.async {
+                                runningApp.activate()
+                            }
                         }
                     }
+                    return
                 }
-                return
+            }
+
+            if let contents = try? FileManager.default.contentsOfDirectory(atPath: dir) {
+                let lowerName = app.name.lowercased().replacingOccurrences(of: " ", with: "")
+                for item in contents where item.hasSuffix(".app") {
+                    let itemLower = item.replacingOccurrences(of: ".app", with: "").lowercased().replacingOccurrences(of: " ", with: "")
+                    if itemLower.contains(lowerName) || lowerName.contains(itemLower) {
+                        let fullPath = "\(dir)/\(item)"
+                        let config = NSWorkspace.OpenConfiguration()
+                        config.activates = true
+                        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: fullPath), configuration: config) { runningApp, error in
+                            if let runningApp = runningApp {
+                                DispatchQueue.main.async {
+                                    runningApp.activate()
+                                }
+                            }
+                        }
+                        return
+                    }
+                }
             }
         }
     }
