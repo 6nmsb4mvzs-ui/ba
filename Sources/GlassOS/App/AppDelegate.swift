@@ -244,12 +244,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func restoreDock() {
-        runShellCommands([
+        let cmds = [
             "defaults delete com.apple.dock autohide-delay",
             "defaults delete com.apple.dock autohide-time-modifier",
             "defaults write com.apple.dock autohide -bool false",
             "killall Dock"
-        ])
+        ]
+        for cmd in cmds {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
+            task.arguments = ["-c", cmd]
+            try? task.run()
+        }
     }
 
     private func runShellCommands(_ cmds: [String]) {
@@ -326,11 +332,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         mainWindow?.makeKeyAndOrderFront(nil)
         NSApp.setActivationPolicy(.regular)
-        if #available(macOS 14.0, *) {
-            NSApp.activate()
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            if #available(macOS 14.0, *) {
+                NSApp.activate()
+            } else {
+                NSApp.activate(ignoringOtherApps: true)
+            }
         }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if sender === mainWindow {
+            sender.orderOut(nil)
+            mainWindow = nil
+            NSApp.hide(nil)
+            return false
+        }
+        return true
     }
 
     @objc func showNavigator() {
@@ -399,6 +417,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
         window.backgroundColor = .clear
+        window.isReleasedWhenClosed = true
         window.center()
         window.setGlassContent(NSHostingView(rootView: settingsView))
         window.makeKeyAndOrderFront(nil)
@@ -419,6 +438,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.backgroundColor = .clear
+        window.isReleasedWhenClosed = true
         window.center()
         window.setGlassContent(NSHostingView(rootView: aboutView))
         window.makeKeyAndOrderFront(nil)
