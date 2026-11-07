@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import Combine
 
 struct TimedLyricLine: Identifiable {
@@ -30,504 +29,258 @@ class NowPlayingManager: ObservableObject {
     @Published var repeatMode: Int = 0
     @Published var nextUp: [NextUpTrack] = []
 
-    private var timer: Timer?
-    private var playbackTimer: Timer?
-    private var positionTimer: Timer?
-    private var elapsedTimeBase: Double = 0
-    private var elapsedTimestamp: Date = Date()
+    private var pollTimer: Timer?
+    private var artworkCache: [String: NSImage] = [:]
+    private var lastArtworkKey: String = ""
+    private var fetchingArtwork = false
+
+    private typealias MRSendCommand = @convention(c) (UInt32, UnsafeRawPointer?) -> Bool
+    private var _sendCommand: MRSendCommand?
     private var mrHandle: UnsafeMutableRawPointer?
 
-    private typealias MRInfoCallback = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
-    private typealias MRStateCallback = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
-    private typealias MRRegisterNotifs = @convention(c) (DispatchQueue) -> Void
-    private typealias MRSendCommand = @convention(c) (UInt32, UnsafeRawPointer?) -> Bool
-
-    private var _getNowPlayingInfo: MRInfoCallback?
-    private var _getIsPlaying: MRStateCallback?
-    private var _sendCommand: MRSendCommand?
-
-    private var titleKey = "kMRMediaRemoteNowPlayingInfoTitle"
-    private var artistKey = "kMRMediaRemoteNowPlayingInfoArtist"
-    private var albumKey = "kMRMediaRemoteNowPlayingInfoAlbum"
-    private var artworkKey = "kMRMediaRemoteNowPlayingInfoArtworkData"
-    private var elapsedTimeKey = "kMRMediaRemoteNowPlayingInfoElapsedTime"
-    private var durationKey = "kMRMediaRemoteNowPlayingInfoDuration"
-    private var shuffleKey = "kMRMediaRemoteNowPlayingInfoShuffleMode"
-    private var repeatKey = "kMRMediaRemoteNowPlayingInfoRepeatMode"
-
     private init() {
-        loadMediaRemote()
-        setupNotifications()
+        loadMediaRemoteCommands()
         startPolling()
-        startPlaybackTimer()
-        startPositionPolling()
     }
 
-    // MARK: - Notifications
+    // MARK: - MediaRemote (only for sending playback commands)
 
-    private func setupNotifications() {
-        let dnc = DistributedNotificationCenter.default()
-        dnc.addObserver(
-            self, selector: #selector(musicNotification(_:)),
-            name: NSNotification.Name("com.apple.Music.playerInfo"), object: nil
-        )
-        dnc.addObserver(
-            self, selector: #selector(spotifyNotification(_:)),
-            name: NSNotification.Name("com.spotify.client.PlaybackStateChanged"), object: nil
-        )
-
-        let nc = NotificationCenter.default
-        for name in [
-            "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
-            "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
-            "kMRMediaRemoteNowPlayingApplicationDidChangeNotification"
-        ] {
-            nc.addObserver(self, selector: #selector(mediaRemoteChanged),
-                           name: NSNotification.Name(name), object: nil)
-        }
-    }
-
-    @objc private func mediaRemoteChanged() {
-        fetchNowPlaying()
-    }
-
-    @objc private func musicNotification(_ notification: Notification) {
-        guard let info = notification.userInfo else {
-            fetchNowPlaying()
-            return
-        }
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-
-            let newTitle = info["Name"] as? String ?? ""
-            guard !newTitle.isEmpty else { return }
-
-            let titleChanged = newTitle != self.title
-            self.title = newTitle
-            self.artist = info["Artist"] as? String ?? ""
-            self.album = info["Album"] as? String ?? ""
-
-            let state = info["Player State"] as? String ?? ""
-            self.isPlaying = (state == "Playing")
-
-            if let totalTime = info["Total Time"] as? Double {
-                self.duration = totalTime / 1000.0
-            }
-            if let position = info["Player Position"] as? Double {
-                self.elapsedTimeBase = position
-                self.elapsedTimestamp = Date()
-                self.elapsedTime = position
-            }
-
-            if titleChanged {
-                self.fetchArtwork()
-                self.fetchLyrics()
-            }
-        }
-    }
-
-    @objc private func spotifyNotification(_ notification: Notification) {
-        guard let info = notification.userInfo else {
-            fetchNowPlaying()
-            return
-        }
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-
-            let newTitle = info["Name"] as? String ?? ""
-            guard !newTitle.isEmpty else { return }
-
-            let titleChanged = newTitle != self.title
-            self.title = newTitle
-            self.artist = info["Artist"] as? String ?? ""
-            self.album = info["Album"] as? String ?? ""
-
-            let state = info["Player State"] as? String ?? ""
-            self.isPlaying = (state == "Playing")
-
-            if let dur = info["Duration"] as? Double {
-                self.duration = dur / 1000.0
-            }
-            if let position = info["Playback Position"] as? Double {
-                self.elapsedTimeBase = position
-                self.elapsedTimestamp = Date()
-                self.elapsedTime = position
-            }
-
-            if titleChanged {
-                self.fetchArtwork()
-            }
-            self.lyrics = ""
-            self.timedLyrics = []
-        }
-    }
-
-    // MARK: - MediaRemote (via dlopen for reliability)
-
-    private func loadMediaRemote() {
+    private func loadMediaRemoteCommands() {
         guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY) else { return }
         mrHandle = handle
-
-        if let ptr = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") {
-            _getNowPlayingInfo = unsafeBitCast(ptr, to: MRInfoCallback.self)
-        }
-        if let ptr = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying") {
-            _getIsPlaying = unsafeBitCast(ptr, to: MRStateCallback.self)
-        }
-
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoTitle", into: &titleKey)
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoArtist", into: &artistKey)
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoAlbum", into: &albumKey)
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoArtworkData", into: &artworkKey)
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoElapsedTime", into: &elapsedTimeKey)
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoDuration", into: &durationKey)
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoShuffleMode", into: &shuffleKey)
-        loadKeyViaDlsym(handle, symbol: "kMRMediaRemoteNowPlayingInfoRepeatMode", into: &repeatKey)
-
         if let ptr = dlsym(handle, "MRMediaRemoteSendCommand") {
             _sendCommand = unsafeBitCast(ptr, to: MRSendCommand.self)
         }
-
-        if let ptr = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications") {
-            let register = unsafeBitCast(ptr, to: MRRegisterNotifs.self)
-            register(DispatchQueue.main)
-        }
     }
 
-    private func loadKeyViaDlsym(_ handle: UnsafeMutableRawPointer, symbol: String, into target: inout String) {
-        guard let ptr = dlsym(handle, symbol) else { return }
-        guard let strPtr = ptr.load(as: UnsafeRawPointer?.self) else { return }
-        target = Unmanaged<NSString>.fromOpaque(strPtr).takeUnretainedValue() as String
-    }
+    // MARK: - Single polling loop (the only source of truth)
 
     private func startPolling() {
-        fetchNowPlaying()
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            self?.fetchNowPlaying()
+        poll()
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.poll()
         }
     }
 
-    func fetchNowPlaying() {
-        if let getNowPlayingInfo = _getNowPlayingInfo {
-            getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
-                guard let self = self else { return }
-                let newTitle = info[self.titleKey] as? String ?? ""
+    private func poll() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
 
-                if newTitle.isEmpty {
-                    self.fetchNowPlayingViaAppleScript()
-                    return
-                }
-
-                let titleChanged = newTitle != self.title
-                self.title = newTitle
-                self.artist = info[self.artistKey] as? String ?? ""
-                self.album = info[self.albumKey] as? String ?? ""
-
-                if let img = self.extractArtwork(from: info) {
-                    self.artwork = img
-                } else if titleChanged || self.artwork == nil {
-                    self.fetchArtworkViaAppleScript()
-                }
-
-                if let elapsed = info[self.elapsedTimeKey] as? Double {
-                    self.elapsedTimeBase = elapsed
-                    self.elapsedTimestamp = Date()
-                    self.elapsedTime = elapsed
-                }
-                if let dur = info[self.durationKey] as? Double {
-                    self.duration = dur
-                }
-
-                if let shuf = info[self.shuffleKey] as? Int {
-                    self.shuffleOn = shuf != 0
-                }
-                if let rep = info[self.repeatKey] as? Int {
-                    self.repeatMode = rep
-                }
-
-                if titleChanged {
-                    self.fetchLyrics()
-                    self.fetchNextUp()
-                } else if self.lyrics.isEmpty && !self.title.isEmpty {
-                    self.fetchLyrics()
-                }
-            }
-        } else {
-            fetchNowPlayingViaAppleScript()
-        }
-
-        _getIsPlaying?(DispatchQueue.main) { [weak self] playing in
-            self?.isPlaying = playing
-        }
-    }
-
-    // MARK: - Artwork
-
-    private func extractArtwork(from info: [String: Any]) -> NSImage? {
-        if let data = info[artworkKey] as? Data, !data.isEmpty,
-           let img = NSImage(data: data) {
-            return img
-        }
-        for (key, value) in info {
-            let lk = key.lowercased()
-            guard lk.contains("artwork") || lk.contains("image") else { continue }
-            if let data = value as? Data, !data.isEmpty, let img = NSImage(data: data) {
-                return img
-            }
-        }
-        return nil
-    }
-
-    private func fetchArtwork() {
-        if let getNowPlayingInfo = _getNowPlayingInfo {
-            getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
-                guard let self = self else { return }
-                if let img = self.extractArtwork(from: info) {
-                    self.artwork = img
-                } else {
-                    self.fetchArtworkViaAppleScript()
-                }
-            }
-        } else {
-            fetchArtworkViaAppleScript()
-        }
-    }
-
-    private func fetchArtworkViaAppleScript() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
             let musicRunning = NSWorkspace.shared.runningApplications.contains {
                 $0.bundleIdentifier == "com.apple.Music"
             }
-            if musicRunning {
-                self?.fetchMusicArtwork()
-                return
-            }
-
             let spotifyRunning = NSWorkspace.shared.runningApplications.contains {
                 $0.bundleIdentifier == "com.spotify.client"
             }
-            if spotifyRunning {
-                self?.fetchSpotifyArtwork()
+
+            if musicRunning {
+                self.pollMusic()
+            } else if spotifyRunning {
+                self.pollSpotify()
+            } else {
+                DispatchQueue.main.async {
+                    self.title = ""
+                    self.artist = ""
+                    self.album = ""
+                    self.isPlaying = false
+                    self.elapsedTime = 0
+                    self.duration = 0
+                    self.artwork = nil
+                }
             }
         }
     }
 
-    private func fetchMusicArtwork() {
-        // Approach 1: get artwork data directly via descriptor
-        let script1 = NSAppleScript(source: """
+    private func pollMusic() {
+        let src = """
         tell application "Music"
             try
-                if player state is playing or player state is paused then
-                    set theTrack to current track
-                    if (count of artworks of theTrack) > 0 then
-                        return data of artwork 1 of theTrack
-                    end if
-                end if
-            end try
-        end tell
-        """)
-        var error1: NSDictionary?
-        if let result = script1?.executeAndReturnError(&error1) {
-            let artData = result.data
-            if !artData.isEmpty, let img = NSImage(data: artData) {
-                DispatchQueue.main.async { [weak self] in self?.artwork = img }
-                return
-            }
-        }
-
-        // Approach 2: get the track's file location and read embedded artwork
-        let script2 = NSAppleScript(source: """
-        tell application "Music"
-            try
-                if player state is playing or player state is paused then
-                    set theTrack to current track
-                    set loc to location of theTrack
-                    return POSIX path of loc
-                end if
+                set trackName to name of current track
+                set trackArtist to artist of current track
+                set trackAlbum to album of current track
+                set playState to "playing"
+                if player state is paused then set playState to "paused"
+                if player state is stopped then set playState to "stopped"
+                set pos to player position
+                set dur to duration of current track
+                set sep to "<<SEP>>"
+                return trackName & sep & trackArtist & sep & trackAlbum & sep & playState & sep & (pos as text) & sep & (dur as text)
             end try
         end tell
         return ""
-        """)
-        var error2: NSDictionary?
-        if let result = script2?.executeAndReturnError(&error2),
-           let filePath = result.stringValue, !filePath.isEmpty {
-            let url = URL(fileURLWithPath: filePath)
-            if let img = extractArtworkFromFile(url) {
-                DispatchQueue.main.async { [weak self] in self?.artwork = img }
-                return
-            }
-        }
-
-        // Approach 3: temp file fallback
-        let tmpPath = "/tmp/glassos_artwork.dat"
-        let script3 = NSAppleScript(source: """
-        tell application "Music"
-            try
-                if player state is playing or player state is paused then
-                    set theTrack to current track
-                    if (count of artworks of theTrack) > 0 then
-                        set artData to raw data of artwork 1 of theTrack
-                        set tmpFile to POSIX file "\(tmpPath)"
-                        try
-                            set fRef to open for access tmpFile with write permission
-                            set eof of fRef to 0
-                            write artData to fRef
-                            close access fRef
-                        on error
-                            try
-                                close access tmpFile
-                            end try
-                        end try
-                        return "\(tmpPath)"
-                    end if
-                end if
-            end try
-        end tell
-        return ""
-        """)
-        var error3: NSDictionary?
-        if let result = script3?.executeAndReturnError(&error3),
-           let path = result.stringValue, !path.isEmpty,
-           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-           !data.isEmpty, let img = NSImage(data: data) {
-            DispatchQueue.main.async { [weak self] in self?.artwork = img }
-        }
-    }
-
-    private func extractArtworkFromFile(_ url: URL) -> NSImage? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        let asset = AVAsset(url: url)
-        for item in asset.commonMetadata {
-            if item.commonKey == .commonKeyArtwork, let data = item.dataValue,
-               let img = NSImage(data: data) {
-                return img
-            }
-        }
-        return nil
-    }
-
-    private func fetchSpotifyArtwork() {
-        let script = NSAppleScript(source: """
-        tell application "Spotify"
-            try
-                if player state is playing or player state is paused then
-                    return artwork url of current track
-                end if
-            end try
-        end tell
-        return ""
-        """)
+        """
+        let script = NSAppleScript(source: src)
         var error: NSDictionary?
-        let result = script?.executeAndReturnError(&error)
-        let urlString = result?.stringValue ?? ""
-
-        guard let url = URL(string: urlString) else { return }
-        guard let data = try? Data(contentsOf: url),
-              let img = NSImage(data: data) else { return }
-
-        DispatchQueue.main.async { [weak self] in
-            self?.artwork = img
+        guard let result = script?.executeAndReturnError(&error),
+              let text = result.stringValue, !text.isEmpty else {
+            DispatchQueue.main.async { [weak self] in
+                self?.isPlaying = false
+            }
+            return
         }
-    }
 
-    // MARK: - AppleScript fallback for track info
+        let parts = text.components(separatedBy: "<<SEP>>")
+        guard parts.count >= 6 else { return }
 
-    private func fetchNowPlayingViaAppleScript() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let musicRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.apple.Music"
-            }
+        let newTitle = parts[0]
+        let newArtist = parts[1]
+        let newAlbum = parts[2]
+        let state = parts[3]
+        let pos = Double(parts[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let dur = Double(parts[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
 
-            if musicRunning {
-                let musicScript = NSAppleScript(source: """
-                tell application "Music"
-                    try
-                        if player state is playing or player state is paused then
-                            set trackName to name of current track
-                            set trackArtist to artist of current track
-                            set trackAlbum to album of current track
-                            set playState to "1"
-                            if player state is paused then set playState to "0"
-                            set pos to player position
-                            set dur to duration of current track
-                            return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & (pos as text) & "||" & (dur as text)
-                        end if
-                    end try
-                end tell
-                return ""
-                """)
-                var error: NSDictionary?
-                let result = musicScript?.executeAndReturnError(&error)
-                let text = result?.stringValue ?? ""
+        let trackKey = "\(newTitle)|\(newArtist)|\(newAlbum)"
+        let titleChanged = newTitle != self.title || newArtist != self.artist
 
-                if !text.isEmpty {
-                    self?.parseNowPlayingResult(text)
-                    self?.fetchArtworkViaAppleScript()
-                    return
-                }
-            }
-
-            let spotifyRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.spotify.client"
-            }
-            guard spotifyRunning else { return }
-
-            let spotifyScript = NSAppleScript(source: """
-            tell application "Spotify"
-                try
-                    if player state is playing or player state is paused then
-                        set trackName to name of current track
-                        set trackArtist to artist of current track
-                        set trackAlbum to album of current track
-                        set playState to "1"
-                        if player state is paused then set playState to "0"
-                        set pos to player position
-                        set dur to (duration of current track) / 1000
-                        return trackName & "||" & trackArtist & "||" & trackAlbum & "||" & playState & "||" & (pos as text) & "||" & (dur as text)
-                    end if
-                end try
-            end tell
-            return ""
-            """)
-            var error: NSDictionary?
-            let spotResult = spotifyScript?.executeAndReturnError(&error)
-            let spotText = spotResult?.stringValue ?? ""
-            if !spotText.isEmpty {
-                self?.parseNowPlayingResult(spotText)
-                self?.fetchSpotifyArtwork()
-            }
-        }
-    }
-
-    private func parseNowPlayingResult(_ text: String) {
-        let parts = text.components(separatedBy: "||")
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            let newTitle = parts.count > 0 ? parts[0] : ""
-            let titleChanged = newTitle != self.title
             self.title = newTitle
-            self.artist = parts.count > 1 ? parts[1] : ""
-            self.album = parts.count > 2 ? parts[2] : ""
-            self.isPlaying = parts.count > 3 ? parts[3] == "1" : false
-            if parts.count > 4, let pos = Double(parts[4].trimmingCharacters(in: .whitespaces)) {
-                self.elapsedTimeBase = pos
-                self.elapsedTimestamp = Date()
-                self.elapsedTime = pos
+            self.artist = newArtist
+            self.album = newAlbum
+            self.isPlaying = (state == "playing")
+            self.elapsedTime = pos
+            self.duration = dur
+        }
+
+        if titleChanged && !newTitle.isEmpty {
+            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
+            fetchLyrics()
+            fetchNextUp()
+        } else if self.artwork == nil && !newTitle.isEmpty && trackKey != lastArtworkKey {
+            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "music")
+        }
+    }
+
+    private func pollSpotify() {
+        let src = """
+        tell application "Spotify"
+            try
+                set trackName to name of current track
+                set trackArtist to artist of current track
+                set trackAlbum to album of current track
+                set playState to "playing"
+                if player state is paused then set playState to "paused"
+                set pos to player position
+                set dur to (duration of current track) / 1000
+                set artURL to artwork url of current track
+                set sep to "<<SEP>>"
+                return trackName & sep & trackArtist & sep & trackAlbum & sep & playState & sep & (pos as text) & sep & (dur as text) & sep & artURL
+            end try
+        end tell
+        return ""
+        """
+        let script = NSAppleScript(source: src)
+        var error: NSDictionary?
+        guard let result = script?.executeAndReturnError(&error),
+              let text = result.stringValue, !text.isEmpty else {
+            DispatchQueue.main.async { [weak self] in
+                self?.isPlaying = false
             }
-            if parts.count > 5, let dur = Double(parts[5].trimmingCharacters(in: .whitespaces)) {
-                self.duration = dur
+            return
+        }
+
+        let parts = text.components(separatedBy: "<<SEP>>")
+        guard parts.count >= 6 else { return }
+
+        let newTitle = parts[0]
+        let newArtist = parts[1]
+        let newAlbum = parts[2]
+        let state = parts[3]
+        let pos = Double(parts[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let dur = Double(parts[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let artURL = parts.count >= 7 ? parts[6] : ""
+
+        let trackKey = "\(newTitle)|\(newArtist)|\(newAlbum)"
+        let titleChanged = newTitle != self.title || newArtist != self.artist
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.title = newTitle
+            self.artist = newArtist
+            self.album = newAlbum
+            self.isPlaying = (state == "playing")
+            self.elapsedTime = pos
+            self.duration = dur
+            self.lyrics = ""
+            self.timedLyrics = []
+        }
+
+        if titleChanged && !newTitle.isEmpty {
+            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "spotify", spotifyURL: artURL)
+        } else if self.artwork == nil && !newTitle.isEmpty && trackKey != lastArtworkKey {
+            fetchArtworkForTrack(title: newTitle, artist: newArtist, album: newAlbum, trackKey: trackKey, provider: "spotify", spotifyURL: artURL)
+        }
+    }
+
+    // MARK: - Artwork (iTunes Search API for Apple Music, direct URL for Spotify)
+
+    private func fetchArtworkForTrack(title: String, artist: String, album: String, trackKey: String, provider: String, spotifyURL: String = "") {
+        if let cached = artworkCache[trackKey] {
+            lastArtworkKey = trackKey
+            DispatchQueue.main.async { [weak self] in self?.artwork = cached }
+            return
+        }
+
+        guard !fetchingArtwork else { return }
+        fetchingArtwork = true
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            defer { self?.fetchingArtwork = false }
+
+            var image: NSImage?
+
+            if provider == "spotify", !spotifyURL.isEmpty,
+               let url = URL(string: spotifyURL),
+               let data = try? Data(contentsOf: url),
+               let img = NSImage(data: data) {
+                image = img
             }
-            if titleChanged && !newTitle.isEmpty {
-                self.fetchLyrics()
+
+            if image == nil {
+                image = self?.fetchArtworkFromiTunesAPI(title: title, artist: artist)
+            }
+
+            guard let finalImage = image else { return }
+
+            self?.artworkCache[trackKey] = finalImage
+            if self?.artworkCache.count ?? 0 > 50 {
+                self?.artworkCache.removeAll()
+                self?.artworkCache[trackKey] = finalImage
+            }
+
+            self?.lastArtworkKey = trackKey
+            DispatchQueue.main.async { [weak self] in
+                self?.artwork = finalImage
             }
         }
+    }
+
+    private func fetchArtworkFromiTunesAPI(title: String, artist: String) -> NSImage? {
+        let query = "\(artist) \(title)"
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://itunes.apple.com/search?term=\(query)&entity=song&limit=5"
+        guard let url = URL(string: urlString) else { return nil }
+
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]],
+              let first = results.first,
+              let artURLString = first["artworkUrl100"] as? String else { return nil }
+
+        let hiRes = artURLString.replacingOccurrences(of: "100x100bb", with: "512x512bb")
+        guard let artURL = URL(string: hiRes),
+              let artData = try? Data(contentsOf: artURL),
+              let img = NSImage(data: artData) else { return nil }
+
+        return img
     }
 
     // MARK: - Lyrics
 
     private func fetchLyrics() {
+        let currentTitle = self.title
+        let currentArtist = self.artist
+
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let musicRunning = NSWorkspace.shared.runningApplications.contains {
                 $0.bundleIdentifier == "com.apple.Music"
@@ -543,11 +296,9 @@ class NowPlayingManager: ObservableObject {
             let script = NSAppleScript(source: """
             tell application "Music"
                 try
-                    if player state is playing or player state is paused then
-                        set theLyrics to lyrics of current track
-                        if theLyrics is not missing value and theLyrics is not "" then
-                            return theLyrics
-                        end if
+                    set theLyrics to lyrics of current track
+                    if theLyrics is not missing value and theLyrics is not "" then
+                        return theLyrics
                     end if
                 end try
             end tell
@@ -556,7 +307,41 @@ class NowPlayingManager: ObservableObject {
             var error: NSDictionary?
             let result = script?.executeAndReturnError(&error)
             let text = result?.stringValue ?? ""
-            self?.parseLyrics(text)
+
+            if text.isEmpty {
+                self?.fetchLyricsFromLRCLIB(title: currentTitle, artist: currentArtist)
+            } else {
+                self?.parseLyrics(text)
+            }
+        }
+    }
+
+    private func fetchLyricsFromLRCLIB(title: String, artist: String) {
+        let t = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let a = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://lrclib.net/api/get?track_name=\(t)&artist_name=\(a)"
+        guard let url = URL(string: urlString),
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            DispatchQueue.main.async { [weak self] in
+                self?.lyrics = ""
+                self?.timedLyrics = []
+            }
+            return
+        }
+
+        if let synced = json["syncedLyrics"] as? String, !synced.isEmpty {
+            parseLyrics(synced)
+        } else if let plain = json["plainLyrics"] as? String, !plain.isEmpty {
+            DispatchQueue.main.async { [weak self] in
+                self?.lyrics = plain
+                self?.timedLyrics = []
+            }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.lyrics = ""
+                self?.timedLyrics = []
+            }
         }
     }
 
@@ -571,10 +356,10 @@ class NowPlayingManager: ObservableObject {
             let tag = String(trimmed[trimmed.index(after: trimmed.startIndex)..<closeBracket])
             let lyricText = String(trimmed[trimmed.index(after: closeBracket)...]).trimmingCharacters(in: .whitespaces)
 
-            let parts = tag.components(separatedBy: ":")
-            guard parts.count == 2, let minutes = Double(parts[0]) else { continue }
+            let tagParts = tag.components(separatedBy: ":")
+            guard tagParts.count == 2, let minutes = Double(tagParts[0]) else { continue }
 
-            let secParts = parts[1].components(separatedBy: ".")
+            let secParts = tagParts[1].components(separatedBy: ".")
             guard let seconds = Double(secParts[0]) else { continue }
             var frac = 0.0
             if secParts.count > 1, let fracVal = Double(secParts[1]) {
@@ -595,103 +380,38 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    private func startPlaybackTimer() {
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            guard let self = self, self.isPlaying else { return }
-            let elapsed = self.elapsedTimeBase + Date().timeIntervalSince(self.elapsedTimestamp)
-            if self.duration > 0 && elapsed <= self.duration {
-                self.elapsedTime = elapsed
-            }
-        }
-    }
-
-    private func startPositionPolling() {
-        positionTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.syncPlaybackPosition()
-        }
-    }
-
-    private func syncPlaybackPosition() {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let musicRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.apple.Music"
-            }
-            let spotifyRunning = NSWorkspace.shared.runningApplications.contains {
-                $0.bundleIdentifier == "com.spotify.client"
-            }
-            guard musicRunning || spotifyRunning else { return }
-
-            let src: String
-            if musicRunning {
-                src = """
-                tell application "Music"
-                    try
-                        set pos to player position
-                        set dur to duration of current track
-                        set playState to "1"
-                        if player state is paused then set playState to "0"
-                        return (pos as text) & "||" & (dur as text) & "||" & playState
-                    end try
-                end tell
-                return ""
-                """
-            } else {
-                src = """
-                tell application "Spotify"
-                    try
-                        set pos to player position
-                        set dur to (duration of current track) / 1000
-                        set playState to "1"
-                        if player state is paused then set playState to "0"
-                        return (pos as text) & "||" & (dur as text) & "||" & playState
-                    end try
-                end tell
-                return ""
-                """
-            }
-
-            let script = NSAppleScript(source: src)
-            var error: NSDictionary?
-            guard let result = script?.executeAndReturnError(&error),
-                  let text = result.stringValue, !text.isEmpty else { return }
-
-            let parts = text.components(separatedBy: "||")
-            guard parts.count >= 3,
-                  let pos = Double(parts[0]),
-                  let dur = Double(parts[1]) else { return }
-            let playing = parts[2] == "1"
-
-            DispatchQueue.main.async {
-                self?.elapsedTime = pos
-                self?.duration = dur
-                self?.isPlaying = playing
-                self?.elapsedTimeBase = pos
-                self?.elapsedTimestamp = Date()
-            }
-        }
-    }
-
     // MARK: - Playback Controls
 
     func togglePlayPause() {
-        if let send = _sendCommand { _ = send(UInt32(2), nil) }
+        if let send = _sendCommand {
+            _ = send(UInt32(2), nil)
+        } else {
+            sendAppleScriptCommand("playpause")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.isPlaying.toggle()
-            self?.fetchNowPlaying()
+            self?.poll()
         }
     }
 
     func nextTrack() {
-        if let send = _sendCommand { _ = send(UInt32(4), nil) }
+        if let send = _sendCommand {
+            _ = send(UInt32(4), nil)
+        } else {
+            sendAppleScriptCommand("next track")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.fetchNowPlaying()
+            self?.poll()
         }
     }
 
     func previousTrack() {
-        if let send = _sendCommand { _ = send(UInt32(5), nil) }
+        if let send = _sendCommand {
+            _ = send(UInt32(5), nil)
+        } else {
+            sendAppleScriptCommand("previous track")
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.fetchNowPlaying()
+            self?.poll()
         }
     }
 
@@ -703,6 +423,16 @@ class NowPlayingManager: ObservableObject {
     func toggleRepeat() {
         if let send = _sendCommand { _ = send(UInt32(7), nil) }
         repeatMode = (repeatMode + 1) % 3
+    }
+
+    private func sendAppleScriptCommand(_ command: String) {
+        let musicRunning = NSWorkspace.shared.runningApplications.contains {
+            $0.bundleIdentifier == "com.apple.Music"
+        }
+        let app = musicRunning ? "Music" : "Spotify"
+        let script = NSAppleScript(source: "tell application \"\(app)\" to \(command)")
+        var error: NSDictionary?
+        script?.executeAndReturnError(&error)
     }
 
     // MARK: - Next Up Queue
