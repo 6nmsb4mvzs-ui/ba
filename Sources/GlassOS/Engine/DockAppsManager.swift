@@ -32,43 +32,27 @@ class DockAppsManager: ObservableObject {
 
     func launch(_ app: DockApp) {
         if app.bundleID == (Bundle.main.bundleIdentifier ?? "com.glassos.app") {
-            if #available(macOS 14.0, *) {
-                NSApp.activate()
-            } else {
-                NSApp.activate(ignoringOtherApps: true)
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.showMainWindow()
             }
+            return
+        }
+
+        if let running = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == app.bundleID }) {
+            running.activate(options: .activateIgnoringOtherApps)
             return
         }
 
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            NSWorkspace.shared.openApplication(at: url, configuration: config) { runningApp, error in
-                if let runningApp = runningApp {
-                    DispatchQueue.main.async {
-                        runningApp.activate()
-                    }
-                }
-            }
+            openApp(at: url)
             return
         }
 
-        let searchNames = [app.name]
         for dir in ["/Applications", NSHomeDirectory() + "/Applications"] {
-            for name in searchNames {
-                let path = "\(dir)/\(name).app"
-                if FileManager.default.fileExists(atPath: path) {
-                    let config = NSWorkspace.OpenConfiguration()
-                    config.activates = true
-                    NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config) { runningApp, error in
-                        if let runningApp = runningApp {
-                            DispatchQueue.main.async {
-                                runningApp.activate()
-                            }
-                        }
-                    }
-                    return
-                }
+            let exactPath = "\(dir)/\(app.name).app"
+            if FileManager.default.fileExists(atPath: exactPath) {
+                openApp(at: URL(fileURLWithPath: exactPath))
+                return
             }
 
             if let contents = try? FileManager.default.contentsOfDirectory(atPath: dir) {
@@ -76,21 +60,23 @@ class DockAppsManager: ObservableObject {
                 for item in contents where item.hasSuffix(".app") {
                     let itemLower = item.replacingOccurrences(of: ".app", with: "").lowercased().replacingOccurrences(of: " ", with: "")
                     if itemLower.contains(lowerName) || lowerName.contains(itemLower) {
-                        let fullPath = "\(dir)/\(item)"
-                        let config = NSWorkspace.OpenConfiguration()
-                        config.activates = true
-                        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: fullPath), configuration: config) { runningApp, error in
-                            if let runningApp = runningApp {
-                                DispatchQueue.main.async {
-                                    runningApp.activate()
-                                }
-                            }
-                        }
+                        openApp(at: URL(fileURLWithPath: "\(dir)/\(item)"))
                         return
                     }
                 }
             }
         }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        proc.arguments = ["-a", app.name]
+        try? proc.run()
+    }
+
+    private func openApp(at url: URL) {
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in }
     }
 
     static func adaptiveColor(for wallpaper: WallpaperItem?) -> Color {

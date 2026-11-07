@@ -177,7 +177,13 @@ struct NowPlayingOverlayView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                 }
-                .frame(maxHeight: 120)
+                .mask(
+                    VStack(spacing: 0) {
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 25)
+                    }
+                )
             }
 
             Spacer(minLength: 0)
@@ -215,7 +221,13 @@ struct TimedLyricsView: View {
                 }
                 .padding(12)
             }
-            .frame(maxHeight: 160)
+            .mask(
+                VStack(spacing: 0) {
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 25)
+                }
+            )
             .onChange(of: elapsedTime) { _ in
                 guard !lyrics.isEmpty else { return }
                 let newIndex = currentIndex()

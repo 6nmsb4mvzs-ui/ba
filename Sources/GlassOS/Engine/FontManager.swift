@@ -9,10 +9,21 @@ class FontManager: ObservableObject {
     @AppStorage("clockFontSize") var clockFontSize: Double = 64
 
     static let recommendedFonts = [
-        "", "Helvetica Neue", "Avenir", "Avenir Next", "Futura",
-        "SF Pro", "SF Mono", "Menlo", "Monaco", "Courier New",
+        "",
+        "Helvetica Neue", "Avenir", "Avenir Next", "Futura",
+        "SF Pro", "SF Compact", "Gill Sans", "Optima",
+        "Verdana", "Trebuchet MS", "Arial", "Lucida Grande",
+        "Seravek", "Kefa",
         "Georgia", "Baskerville", "Didot", "Palatino",
-        "Gill Sans", "Optima", "Verdana", "Trebuchet MS"
+        "Times New Roman", "Garamond", "Hoefler Text",
+        "Big Caslon", "Cochin", "Iowan Old Style", "Charter",
+        "Athelas", "Superclarendon",
+        "SF Mono", "Menlo", "Monaco", "Courier New",
+        "American Typewriter", "Copperplate", "Rockwell",
+        "Bodoni 72", "Phosphate",
+        "Snell Roundhand", "Zapfino", "Bradley Hand",
+        "Marker Felt", "Noteworthy", "Chalkboard SE",
+        "Skia", "Papyrus", "Impact",
     ]
 
     static let weightOptions: [(String, Font.Weight)] = [
