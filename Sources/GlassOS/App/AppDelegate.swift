@@ -233,27 +233,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Dock Hiding
 
     private func hideDock() {
-        let cmds = [
-            "defaults write com.apple.dock autohide -bool true",
-            "defaults write com.apple.dock autohide-delay -float 1000",
-            "defaults write com.apple.dock autohide-time-modifier -float 0",
-            "killall Dock"
-        ]
-        for cmd in cmds {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/bash")
-            task.arguments = ["-c", cmd]
-            do { try task.run(); task.waitUntilExit() } catch {}
+        DispatchQueue.global(qos: .utility).async {
+            self.runShellCommands([
+                "defaults write com.apple.dock autohide -bool true",
+                "defaults write com.apple.dock autohide-delay -float 1000",
+                "defaults write com.apple.dock autohide-time-modifier -float 0",
+                "killall Dock"
+            ])
         }
     }
 
     private func restoreDock() {
-        let cmds = [
+        runShellCommands([
             "defaults delete com.apple.dock autohide-delay",
             "defaults delete com.apple.dock autohide-time-modifier",
             "defaults write com.apple.dock autohide -bool false",
             "killall Dock"
-        ]
+        ])
+    }
+
+    private func runShellCommands(_ cmds: [String]) {
         for cmd in cmds {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -322,10 +321,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func showMainWindow() {
-        if mainWindow == nil || !mainWindow!.isVisible {
+        if mainWindow == nil {
             setupMainWindow()
         }
         mainWindow?.makeKeyAndOrderFront(nil)
+        NSApp.setActivationPolicy(.regular)
         if #available(macOS 14.0, *) {
             NSApp.activate()
         } else {
@@ -428,7 +428,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 class OverlayPanel: NSPanel {
     var widgetKey: String = ""
 
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 }
 

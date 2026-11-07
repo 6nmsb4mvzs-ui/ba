@@ -38,44 +38,23 @@ class DockAppsManager: ObservableObject {
             return
         }
 
-        if let url = appURL(for: app) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            let appName = app.name
-            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
-                if error != nil {
-                    DispatchQueue.main.async { self.shellOpen(appName) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            proc.arguments = ["-b", app.bundleID]
+            do {
+                try proc.run()
+                proc.waitUntilExit()
+                if proc.terminationStatus != 0 {
+                    self.shellOpenByName(app.name)
                 }
+            } catch {
+                self.shellOpenByName(app.name)
             }
-            return
         }
-
-        shellOpen(app.name)
     }
 
-    private func appURL(for app: DockApp) -> URL? {
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
-            return url
-        }
-        for dir in ["/Applications", NSHomeDirectory() + "/Applications"] {
-            let exactPath = "\(dir)/\(app.name).app"
-            if FileManager.default.fileExists(atPath: exactPath) {
-                return URL(fileURLWithPath: exactPath)
-            }
-            if let contents = try? FileManager.default.contentsOfDirectory(atPath: dir) {
-                let lowerName = app.name.lowercased().replacingOccurrences(of: " ", with: "")
-                for item in contents where item.hasSuffix(".app") {
-                    let itemLower = item.replacingOccurrences(of: ".app", with: "").lowercased().replacingOccurrences(of: " ", with: "")
-                    if itemLower.contains(lowerName) || lowerName.contains(itemLower) {
-                        return URL(fileURLWithPath: "\(dir)/\(item)")
-                    }
-                }
-            }
-        }
-        return nil
-    }
-
-    private func shellOpen(_ name: String) {
+    private func shellOpenByName(_ name: String) {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         proc.arguments = ["-a", name]
