@@ -30,6 +30,9 @@ class NowPlayingManager: ObservableObject {
     @Published var nextUp: [NextUpTrack] = []
 
     private var pollTimer: Timer?
+    private var interpTimer: Timer?
+    private var lastPollPosition: Double = 0
+    private var lastPollTime: Date = Date()
     private var artworkCache: [String: NSImage] = [:]
     private var lastArtworkKey: String = ""
     private var fetchingArtwork = false
@@ -41,9 +44,10 @@ class NowPlayingManager: ObservableObject {
     private init() {
         loadMediaRemoteCommands()
         startPolling()
+        startInterpolation()
     }
 
-    // MARK: - Run AppleScript via osascript subprocess (thread-safe, unlike NSAppleScript)
+    // MARK: - Run AppleScript via osascript subprocess (thread-safe)
 
     private func runOsascript(_ source: String) -> String? {
         let proc = Process()
@@ -63,6 +67,23 @@ class NowPlayingManager: ObservableObject {
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private func runCurl(_ url: String) -> Data? {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        proc.arguments = ["-s", "-L", "--max-time", "10", url]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = Pipe()
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard proc.terminationStatus == 0 else { return nil }
+        return pipe.fileHandleForReading.readDataToEndOfFile()
+    }
+
     private func isAppRunning(_ bundleID: String) -> Bool {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleID }
     }
@@ -77,12 +98,22 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    // MARK: - Single polling loop
+    // MARK: - Polling + smooth interpolation
 
     private func startPolling() {
         poll()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.poll()
+        }
+    }
+
+    private func startInterpolation() {
+        interpTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            guard let self = self, self.isPlaying else { return }
+            let elapsed = self.lastPollPosition + Date().timeIntervalSince(self.lastPollTime)
+            if self.duration > 0 && elapsed <= self.duration {
+                self.elapsedTime = elapsed
+            }
         }
     }
 
@@ -157,6 +188,8 @@ class NowPlayingManager: ObservableObject {
             self.isPlaying = (state == "playing")
             self.elapsedTime = pos
             self.duration = dur
+            self.lastPollPosition = pos
+            self.lastPollTime = Date()
         }
 
         if titleChanged && !newTitle.isEmpty {
@@ -218,6 +251,8 @@ class NowPlayingManager: ObservableObject {
             self.isPlaying = (state == "playing")
             self.elapsedTime = pos
             self.duration = dur
+            self.lastPollPosition = pos
+            self.lastPollTime = Date()
             self.lyrics = ""
             self.timedLyrics = []
         }
@@ -229,7 +264,7 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    // MARK: - Artwork (iTunes Search API for Apple Music, direct URL for Spotify)
+    // MARK: - Artwork
 
     private func fetchArtworkForTrack(title: String, artist: String, album: String, trackKey: String, provider: String, spotifyURL: String = "") {
         if let cached = artworkCache[trackKey] {
@@ -246,15 +281,22 @@ class NowPlayingManager: ObservableObject {
 
             var image: NSImage?
 
-            if provider == "spotify", !spotifyURL.isEmpty,
-               let url = URL(string: spotifyURL),
-               let data = try? Data(contentsOf: url),
-               let img = NSImage(data: data) {
-                image = img
+            // Spotify: direct CDN URL via curl
+            if provider == "spotify", !spotifyURL.isEmpty {
+                if let data = self?.runCurl(spotifyURL), !data.isEmpty,
+                   let img = NSImage(data: data) {
+                    image = img
+                }
             }
 
+            // iTunes Search API via curl
             if image == nil {
-                image = self?.fetchArtworkFromiTunesAPI(title: title, artist: artist)
+                image = self?.fetchArtworkViaiTunes(title: title, artist: artist)
+            }
+
+            // Last resort for Apple Music: write artwork to temp file via osascript
+            if image == nil && provider == "music" {
+                image = self?.fetchArtworkViaOsascriptFile()
             }
 
             guard let finalImage = image else { return }
@@ -272,56 +314,93 @@ class NowPlayingManager: ObservableObject {
         }
     }
 
-    private func fetchArtworkFromiTunesAPI(title: String, artist: String) -> NSImage? {
-        let query = "\(artist) \(title)"
-            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    private func fetchArtworkViaiTunes(title: String, artist: String) -> NSImage? {
+        let raw = "\(artist) \(title)"
+        let query = raw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? raw
         let urlString = "https://itunes.apple.com/search?term=\(query)&entity=song&limit=5"
-        guard let url = URL(string: urlString) else { return nil }
 
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let jsonData = runCurl(urlString), !jsonData.isEmpty else { return nil }
+        guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let results = json["results"] as? [[String: Any]],
               let first = results.first,
               let artURLString = first["artworkUrl100"] as? String else { return nil }
 
         let hiRes = artURLString.replacingOccurrences(of: "100x100bb", with: "512x512bb")
-        guard let artURL = URL(string: hiRes),
-              let artData = try? Data(contentsOf: artURL),
+        guard let artData = runCurl(hiRes), !artData.isEmpty,
               let img = NSImage(data: artData) else { return nil }
-
         return img
+    }
+
+    private func fetchArtworkViaOsascriptFile() -> NSImage? {
+        let tmpPath = "/tmp/glassos_artwork_\(ProcessInfo.processInfo.processIdentifier).png"
+        let script = """
+        tell application "Music"
+            try
+                set theTrack to current track
+                if (count of artworks of theTrack) > 0 then
+                    set artData to raw data of artwork 1 of theTrack
+                    set f to open for access (POSIX file "\(tmpPath)") with write permission
+                    set eof of f to 0
+                    write artData to f
+                    close access f
+                    return "\(tmpPath)"
+                end if
+            on error
+                try
+                    close access (POSIX file "\(tmpPath)")
+                end try
+            end try
+        end tell
+        return ""
+        """
+        guard let result = runOsascript(script), !result.isEmpty else { return nil }
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: tmpPath)),
+              !data.isEmpty else { return nil }
+
+        try? FileManager.default.removeItem(atPath: tmpPath)
+
+        if let img = NSImage(data: data) {
+            return img
+        }
+
+        // Raw artwork data might have a PICT/JFIF header offset — try skipping first few bytes
+        for offset in [0, 2, 4, 6] where offset < data.count {
+            let slice = data.subdata(in: offset..<data.count)
+            if let img = NSImage(data: slice) {
+                return img
+            }
+        }
+        return nil
     }
 
     // MARK: - Lyrics
 
     private func fetchLyrics(title: String, artist: String) {
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self = self, self.isAppRunning("com.apple.Music") else {
-                DispatchQueue.main.async {
-                    self?.lyrics = ""
-                    self?.timedLyrics = []
+            guard let self = self else { return }
+
+            // Try embedded lyrics from Music.app first
+            if self.isAppRunning("com.apple.Music") {
+                let script = """
+                tell application "Music"
+                    try
+                        set theLyrics to lyrics of current track
+                        if theLyrics is not missing value and theLyrics is not "" then
+                            return theLyrics
+                        end if
+                    end try
+                end tell
+                return ""
+                """
+                let text = self.runOsascript(script) ?? ""
+                if !text.isEmpty {
+                    self.parseLyrics(text)
+                    return
                 }
-                return
             }
 
-            let script = """
-            tell application "Music"
-                try
-                    set theLyrics to lyrics of current track
-                    if theLyrics is not missing value and theLyrics is not "" then
-                        return theLyrics
-                    end if
-                end try
-            end tell
-            return ""
-            """
-            let text = self.runOsascript(script) ?? ""
-
-            if text.isEmpty {
-                self.fetchLyricsFromLRCLIB(title: title, artist: artist)
-            } else {
-                self.parseLyrics(text)
-            }
+            // Fallback: LRCLIB for synced lyrics
+            self.fetchLyricsFromLRCLIB(title: title, artist: artist)
         }
     }
 
@@ -329,8 +408,8 @@ class NowPlayingManager: ObservableObject {
         let t = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let a = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://lrclib.net/api/get?track_name=\(t)&artist_name=\(a)"
-        guard let url = URL(string: urlString),
-              let data = try? Data(contentsOf: url),
+
+        guard let data = runCurl(urlString), !data.isEmpty,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             DispatchQueue.main.async { [weak self] in
                 self?.lyrics = ""
