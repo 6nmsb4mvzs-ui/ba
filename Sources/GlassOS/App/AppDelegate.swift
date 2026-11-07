@@ -321,7 +321,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func showMainWindow() {
-        if mainWindow == nil {
+        if mainWindow == nil || !mainWindow!.isVisible {
             setupMainWindow()
         }
         mainWindow?.makeKeyAndOrderFront(nil)
@@ -428,7 +428,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 class OverlayPanel: NSPanel {
     var widgetKey: String = ""
 
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }
 

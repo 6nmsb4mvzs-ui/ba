@@ -38,27 +38,32 @@ class DockAppsManager: ObservableObject {
             return
         }
 
+        let bundleID = app.bundleID
+        let name = app.name
         DispatchQueue.global(qos: .userInitiated).async {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            proc.arguments = ["-b", app.bundleID]
+            proc.arguments = ["-b", bundleID]
             do {
                 try proc.run()
                 proc.waitUntilExit()
-                if proc.terminationStatus != 0 {
-                    self.shellOpenByName(app.name)
-                }
-            } catch {
-                self.shellOpenByName(app.name)
+            } catch {}
+
+            let script = Process()
+            script.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            script.arguments = ["-e",
+                "tell application \"System Events\" to set frontmost of first process whose bundle identifier is \"\(bundleID)\" to true"
+            ]
+            try? script.run()
+            script.waitUntilExit()
+
+            if proc.terminationStatus != 0 {
+                let fallback = Process()
+                fallback.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                fallback.arguments = ["-a", name]
+                try? fallback.run()
             }
         }
-    }
-
-    private func shellOpenByName(_ name: String) {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        proc.arguments = ["-a", name]
-        try? proc.run()
     }
 
     static func adaptiveColor(for wallpaper: WallpaperItem?) -> Color {
