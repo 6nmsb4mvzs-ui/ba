@@ -52,13 +52,13 @@ struct PositioningLaunchView: View {
     }
 }
 
-private class PositioningState: ObservableObject {
+class PositioningState: ObservableObject {
     @Published var tempPositions: [String: CGPoint] = [:]
     @Published var tempSizes: [String: CGSize] = [:]
     @Published var selectedWidget: String?
     @Published var saved = false
     var screenSize: CGSize = .zero
-    var keyMonitor: Any?
+    var closePanel: (() -> Void)?
 
     func loadCurrentPositions(screenSize: CGSize) {
         self.screenSize = screenSize
@@ -88,18 +88,21 @@ private class PositioningState: ObservableObject {
         saved = true
     }
 
-    func removeKeyMonitor() {
-        if let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
+    func scaleSelectedWidget(factor: CGFloat) {
+        guard let key = selectedWidget else { return }
+        let current = tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
+        if factor > 1 {
+            tempSizes[key] = CGSize(width: current.width * factor, height: current.height * factor)
+        } else {
+            let newW = max(current.width * factor, 60)
+            let newH = max(current.height * factor, 40)
+            tempSizes[key] = CGSize(width: newW, height: newH)
         }
     }
 }
 
 struct WidgetPositioningView: View {
-    var closePanel: () -> Void
-
-    @StateObject private var state = PositioningState()
+    @ObservedObject var state: PositioningState
 
     var body: some View {
         GeometryReader { geo in
@@ -117,10 +120,6 @@ struct WidgetPositioningView: View {
             .onAppear {
                 state.screenSize = geo.size
                 state.loadCurrentPositions(screenSize: geo.size)
-                installKeyMonitor()
-            }
-            .onDisappear {
-                state.removeKeyMonitor()
             }
             .onChange(of: geo.size) { newSize in
                 state.screenSize = newSize
@@ -195,41 +194,6 @@ struct WidgetPositioningView: View {
                 .font(.system(size: 12, weight: .medium))
         }
         .foregroundColor(color)
-    }
-
-    private func installKeyMonitor() {
-        let s = state
-        let close = closePanel
-        s.keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            switch event.keyCode {
-            case 53: // Esc
-                close()
-                return nil
-            case 36: // Return
-                if !s.saved {
-                    s.savePositions()
-                } else {
-                    close()
-                }
-                return nil
-            case 126: // Up arrow — scale up
-                if let key = s.selectedWidget {
-                    let current = s.tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
-                    s.tempSizes[key] = CGSize(width: current.width * 1.1, height: current.height * 1.1)
-                }
-                return nil
-            case 125: // Down arrow — scale down
-                if let key = s.selectedWidget {
-                    let current = s.tempSizes[key] ?? WidgetLayoutManager.widgetDefinitions.first(where: { $0.key == key }).map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 200, height: 200)
-                    let newW = max(current.width * 0.9, 60)
-                    let newH = max(current.height * 0.9, 40)
-                    s.tempSizes[key] = CGSize(width: newW, height: newH)
-                }
-                return nil
-            default:
-                return event
-            }
-        }
     }
 }
 

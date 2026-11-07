@@ -364,16 +364,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.acceptsMouseMovedEvents = true
 
-        let positioningView = WidgetPositioningView(closePanel: { [weak self] in
+        let state = PositioningState()
+        state.closePanel = { [weak self] in
             self?.positioningPanel?.orderOut(nil)
             self?.positioningPanel = nil
-        })
+        }
+        panel.positioningState = state
+
+        let positioningView = WidgetPositioningView(state: state)
         panel.contentView = NSHostingView(rootView: positioningView)
         panel.setFrame(frame, display: true)
 
         positioningPanel = panel
         panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     @objc func showSettings() {
@@ -425,10 +433,33 @@ class OverlayPanel: NSPanel {
 }
 
 class PositioningPanel: NSPanel {
+    var positioningState: PositioningState?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
-    override func resignKey() {
-        super.resignKey()
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        guard let state = positioningState else {
+            super.keyDown(with: event)
+            return
+        }
+        switch event.keyCode {
+        case 53: // Esc
+            state.closePanel?()
+        case 36: // Return
+            if !state.saved {
+                state.savePositions()
+            } else {
+                state.closePanel?()
+            }
+        case 126: // Up arrow
+            state.scaleSelectedWidget(factor: 1.1)
+        case 125: // Down arrow
+            state.scaleSelectedWidget(factor: 0.9)
+        default:
+            super.keyDown(with: event)
+        }
     }
 }
