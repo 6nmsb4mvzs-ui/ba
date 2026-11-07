@@ -38,45 +38,48 @@ class DockAppsManager: ObservableObject {
             return
         }
 
-        if let running = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == app.bundleID }) {
-            running.activate(options: .activateIgnoringOtherApps)
+        if let url = appURL(for: app) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            let appName = app.name
+            NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+                if error != nil {
+                    DispatchQueue.main.async { self.shellOpen(appName) }
+                }
+            }
             return
         }
 
+        shellOpen(app.name)
+    }
+
+    private func appURL(for app: DockApp) -> URL? {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
-            openApp(at: url)
-            return
+            return url
         }
-
         for dir in ["/Applications", NSHomeDirectory() + "/Applications"] {
             let exactPath = "\(dir)/\(app.name).app"
             if FileManager.default.fileExists(atPath: exactPath) {
-                openApp(at: URL(fileURLWithPath: exactPath))
-                return
+                return URL(fileURLWithPath: exactPath)
             }
-
             if let contents = try? FileManager.default.contentsOfDirectory(atPath: dir) {
                 let lowerName = app.name.lowercased().replacingOccurrences(of: " ", with: "")
                 for item in contents where item.hasSuffix(".app") {
                     let itemLower = item.replacingOccurrences(of: ".app", with: "").lowercased().replacingOccurrences(of: " ", with: "")
                     if itemLower.contains(lowerName) || lowerName.contains(itemLower) {
-                        openApp(at: URL(fileURLWithPath: "\(dir)/\(item)"))
-                        return
+                        return URL(fileURLWithPath: "\(dir)/\(item)")
                     }
                 }
             }
         }
-
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        proc.arguments = ["-a", app.name]
-        try? proc.run()
+        return nil
     }
 
-    private func openApp(at url: URL) {
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in }
+    private func shellOpen(_ name: String) {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        proc.arguments = ["-a", name]
+        try? proc.run()
     }
 
     static func adaptiveColor(for wallpaper: WallpaperItem?) -> Color {
