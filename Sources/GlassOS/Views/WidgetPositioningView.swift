@@ -53,78 +53,129 @@ struct PositioningLaunchView: View {
 }
 
 struct WidgetPositioningView: View {
+    var closePanel: () -> Void
+
     @State private var tempPositions: [String: CGPoint] = [:]
     @State private var selectedWidget: String?
     @State private var saved = false
+    @State private var keyMonitor: Any?
+    @State private var screenSize: CGSize = .zero
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 Color.black.opacity(0.45)
-                    .ignoresSafeArea()
 
                 GridOverlay(size: geo.size)
 
                 ForEach(WidgetLayoutManager.widgetDefinitions, id: \.key) { def in
-                    let pos = tempPositions[def.key] ?? CGPoint(
-                        x: geo.size.width * def.defaultNormX,
-                        y: geo.size.height * (1 - def.defaultNormY)
-                    )
-
-                    WidgetPreview(
-                        label: def.label,
-                        size: CGSize(width: def.width, height: def.height),
-                        isSelected: selectedWidget == def.key
-                    )
-                    .position(pos)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                selectedWidget = def.key
-                                let newX = min(max(value.location.x, def.width / 2), geo.size.width - def.width / 2)
-                                let newY = min(max(value.location.y, def.height / 2), geo.size.height - def.height / 2)
-                                tempPositions[def.key] = CGPoint(x: newX, y: newY)
-                            }
-                    )
+                    widgetDraggable(def: def, geo: geo)
                 }
 
-                VStack {
-                    Spacer()
-                    HStack(spacing: 16) {
-                        if saved {
-                            Text("Positions saved! Press Esc to close.")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.green)
-                        } else {
-                            Text("Drag widgets to reposition")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white.opacity(0.8))
-                            Text("Return = Save")
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.cyan)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1)))
-                            Text("Esc = Cancel")
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.orange)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1)))
-                        }
-                    }
-                    .padding(.bottom, 40)
-                }
+                instructionBar
             }
             .onAppear {
+                screenSize = geo.size
                 loadCurrentPositions(screenSize: geo.size)
+                installKeyMonitor(screenSize: geo.size)
             }
+            .onDisappear {
+                removeKeyMonitor()
+            }
+            .onChange(of: geo.size) { newSize in
+                screenSize = newSize
+            }
+        }
+    }
+
+    private func widgetDraggable(def: WidgetLayout, geo: GeometryProxy) -> some View {
+        let pos = tempPositions[def.key] ?? CGPoint(
+            x: geo.size.width * def.defaultNormX,
+            y: geo.size.height * (1 - def.defaultNormY)
+        )
+
+        return WidgetPreview(
+            label: def.label,
+            size: CGSize(width: def.width, height: def.height),
+            isSelected: selectedWidget == def.key
+        )
+        .position(pos)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    selectedWidget = def.key
+                    let halfW = def.width / 2
+                    let halfH = def.height / 2
+                    let newX = min(max(value.location.x, halfW), geo.size.width - halfW)
+                    let newY = min(max(value.location.y, halfH), geo.size.height - halfH)
+                    tempPositions[def.key] = CGPoint(x: newX, y: newY)
+                }
+                .onEnded { _ in }
+        )
+    }
+
+    private var instructionBar: some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 16) {
+                if saved {
+                    Text("Positions saved! Press Esc to close.")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.green)
+                } else {
+                    Text("Drag widgets to reposition")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.8))
+                    keyHint("Return", "Save", .cyan)
+                    keyHint("Esc", "Cancel", .orange)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
             .background(
-                KeyEventHandler(
-                    onEscape: { dismiss() },
-                    onReturn: { saveAndDismiss(screenSize: geo.size) }
-                )
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial.opacity(0.6))
             )
+            .padding(.bottom, 40)
+        }
+    }
+
+    private func keyHint(_ key: String, _ label: String, _ color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(key)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.15)))
+            Text("= \(label)")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .foregroundColor(color)
+    }
+
+    private func installKeyMonitor(screenSize: CGSize) {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            switch event.keyCode {
+            case 53: // Esc
+                closePanel()
+                return nil
+            case 36: // Return
+                if !saved {
+                    savePositions(screenSize: screenSize)
+                } else {
+                    closePanel()
+                }
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
         }
     }
 
@@ -139,7 +190,7 @@ struct WidgetPositioningView: View {
         }
     }
 
-    private func saveAndDismiss(screenSize: CGSize) {
+    private func savePositions(screenSize: CGSize) {
         let layout = WidgetLayoutManager.shared
         for def in WidgetLayoutManager.widgetDefinitions {
             guard let pos = tempPositions[def.key] else { continue }
@@ -149,12 +200,6 @@ struct WidgetPositioningView: View {
         }
         NotificationCenter.default.post(name: .init("WidgetLayoutDidChange"), object: nil)
         saved = true
-    }
-
-    private func dismiss() {
-        if let window = NSApp.keyWindow, window.level == .screenSaver {
-            window.orderOut(nil)
-        }
     }
 }
 
@@ -222,43 +267,5 @@ struct GridOverlay: View {
                 with: .color(centerColor), lineWidth: 1
             )
         }
-    }
-}
-
-struct KeyEventHandler: NSViewRepresentable {
-    var onEscape: () -> Void
-    var onReturn: () -> Void
-
-    func makeNSView(context: Context) -> KeyCaptureView {
-        let view = KeyCaptureView()
-        view.onEscape = onEscape
-        view.onReturn = onReturn
-        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
-        return view
-    }
-
-    func updateNSView(_ nsView: KeyCaptureView, context: Context) {
-        nsView.onEscape = onEscape
-        nsView.onReturn = onReturn
-    }
-}
-
-class KeyCaptureView: NSView {
-    var onEscape: (() -> Void)?
-    var onReturn: (() -> Void)?
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 53: onEscape?()
-        case 36: onReturn?()
-        default: super.keyDown(with: event)
-        }
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        window?.makeFirstResponder(self)
     }
 }

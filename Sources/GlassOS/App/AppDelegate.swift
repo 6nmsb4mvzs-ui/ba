@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var appLauncherPanel: NSPanel?
     var wallpaperPanel: NSPanel?
     var fontChooserPanel: NSPanel?
+    var positioningPanel: NSPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         hideDock()
@@ -337,13 +338,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func openPositioning() {
+        if let existing = positioningPanel, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
         guard let screen = NSScreen.main else { return }
         let frame = screen.frame
 
-        let positioningView = WidgetPositioningView()
-        let panel = NSPanel(
+        let panel = PositioningPanel(
             contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
@@ -352,9 +357,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.acceptsMouseMovedEvents = true
+
+        let positioningView = WidgetPositioningView(closePanel: { [weak self] in
+            self?.positioningPanel?.orderOut(nil)
+            self?.positioningPanel = nil
+        })
         panel.contentView = NSHostingView(rootView: positioningView)
         panel.setFrame(frame, display: true)
+
+        positioningPanel = panel
         panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc func showSettings() {
@@ -403,4 +417,13 @@ class OverlayPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+}
+
+class PositioningPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
+    override func resignKey() {
+        super.resignKey()
+    }
 }
